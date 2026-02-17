@@ -28,6 +28,29 @@ struct ContentView: View {
                         .font(.headline)
                 }
 
+                // 将军提示
+                if gameState.isCheck && !gameState.isGameOver {
+                    Text("将军！")
+                        .font(.title3.bold())
+                        .foregroundColor(.red)
+                }
+
+                // 胜负结果
+                if gameState.isGameOver, let winner = gameState.winner {
+                    VStack(spacing: 6) {
+                        Text(winner == .red ? "红方胜！" : "黑方胜！")
+                            .font(.title2.bold())
+                            .foregroundColor(winner == .red
+                                             ? Color(red: 0.80, green: 0.10, blue: 0.10)
+                                             : Color(red: 0.15, green: 0.15, blue: 0.15))
+                        Text(gameState.isCheck ? "绝杀" : "困毙")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.15)))
+                }
+
                 Divider()
 
                 // 走法记录
