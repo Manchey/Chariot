@@ -3,6 +3,7 @@ import SwiftUI
 enum GameMode {
     case play
     case replay
+    case puzzle
 }
 
 /// 管理棋局状态：棋子、选中、走子、规则校验、棋谱回放
@@ -37,15 +38,22 @@ class GameState: ObservableObject {
     private var replayInitialPieces: [Piece] = []
     private var replayInitialTurn: PieceColor = .red
 
+    // MARK: - 残局练习状态
+    @Published var puzzle: Puzzle? = nil
+    @Published var puzzleStepIndex: Int = 0       // 当前应走第几步
+    @Published var puzzleStatus: PuzzleStatus = .playing
+    @Published var showHint: Bool = false
+    private var puzzleInitialPieces: [Piece] = []
+
     /// 当前步的注释
     var currentComment: String? {
         guard mode == .replay, let record = record else { return nil }
         return record.comments[replayIndex]
     }
 
-    /// 当前选中棋子的合法走法（仅对弈模式）
+    /// 当前选中棋子的合法走法（对弈模式和残局练习模式）
     var validMoves: [Position] {
-        guard mode == .play,
+        guard mode == .play || mode == .puzzle,
               let id = selectedPieceId,
               let piece = pieces.first(where: { $0.id == id }) else {
             return []
@@ -114,6 +122,10 @@ class GameState: ObservableObject {
     }
 
     func selectOrMove(at position: Position) {
+        if mode == .puzzle {
+            puzzleSelectOrMove(at: position)
+            return
+        }
         guard mode == .play, !isGameOver else { return }
         if let selectedId = selectedPieceId {
             if validMoves.contains(position) {
@@ -308,6 +320,117 @@ class GameState: ObservableObject {
         isAutoPlaying = false
         autoPlayTimer?.invalidate()
         autoPlayTimer = nil
+    }
+
+    // MARK: - 残局练习
+
+    func loadPuzzle(_ puzzle: Puzzle) {
+        stopAutoPlay()
+        self.puzzle = puzzle
+        self.mode = .puzzle
+        self.puzzleStepIndex = 0
+        self.puzzleStatus = .playing
+        self.showHint = false
+        self.record = nil
+        self.replayMoves = []
+        self.replayIndex = -1
+        self.moveHistory = []
+
+        if let result = FENParser.parse(puzzle.fen) {
+            pieces = result.pieces
+            currentTurn = result.turn
+        } else {
+            pieces = Self.standardPieces()
+            currentTurn = .red
+        }
+        puzzleInitialPieces = pieces
+        selectedPieceId = nil
+        isCheck = false
+        isGameOver = false
+        winner = nil
+        lastMoveFrom = nil
+        lastMoveTo = nil
+    }
+
+    func loadNextPuzzle() {
+        guard let current = puzzle else { return }
+        let all = SamplePuzzles.all
+        if let idx = all.firstIndex(where: { $0.title == current.title }),
+           idx + 1 < all.count {
+            loadPuzzle(all[idx + 1])
+        } else {
+            loadPuzzle(all[0])
+        }
+    }
+
+    func puzzleSelectOrMove(at position: Position) {
+        guard mode == .puzzle, puzzleStatus == .playing else { return }
+        let playerColor = puzzle?.playerColor ?? .red
+
+        if let selectedId = selectedPieceId {
+            if validMoves.contains(position) {
+                // 检查是否符合正解
+                guard let puzzle = puzzle, puzzleStepIndex < puzzle.solution.count else { return }
+                let step = puzzle.solution[puzzleStepIndex]
+
+                guard let movingPiece = pieces.first(where: { $0.id == selectedId }) else { return }
+
+                if movingPiece.position == step.playerFrom && position == step.playerTo {
+                    // 正确走法
+                    applyMove(from: step.playerFrom, to: step.playerTo)
+
+                    // 检查是否有对方应着
+                    if let oppFrom = step.opponentFrom, let oppTo = step.opponentTo {
+                        // 延迟执行对方应着
+                        puzzleStepIndex += 1
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                            self?.applyMove(from: oppFrom, to: oppTo)
+                            // 检查是否已完成所有步骤
+                            if self?.puzzleStepIndex ?? 0 >= (self?.puzzle?.solution.count ?? 0) {
+                                self?.puzzleStatus = .solved
+                            }
+                        }
+                    } else {
+                        // 没有对方应着，这步完成即为解题成功
+                        puzzleStepIndex += 1
+                        puzzleStatus = .solved
+                    }
+                } else {
+                    // 走法不对
+                    puzzleStatus = .wrong
+                    // 1秒后恢复为playing，让用户重试
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                        guard self?.puzzleStatus == .wrong else { return }
+                        self?.puzzleStatus = .playing
+                    }
+                    selectedPieceId = nil
+                }
+            } else if let tapped = piece(at: position), tapped.color == playerColor {
+                selectedPieceId = tapped.id
+            } else {
+                selectedPieceId = nil
+            }
+        } else {
+            if let tapped = piece(at: position), tapped.color == playerColor {
+                selectedPieceId = tapped.id
+            }
+        }
+    }
+
+    /// 在棋盘上执行一步走法（不做规则检查，用于回放和残局）
+    private func applyMove(from: Position, to: Position) {
+        let captured = piece(at: to)
+        if let captured = captured {
+            pieces.removeAll { $0.id == captured.id }
+        }
+        if let idx = pieces.firstIndex(where: { $0.position == from }) {
+            pieces[idx].position = to
+        }
+        currentTurn = (currentTurn == .red) ? .black : .red
+        selectedPieceId = nil
+        lastMoveFrom = from
+        lastMoveTo = to
+        isCheck = isInCheck(currentTurn)
     }
 
     // MARK: - 走子规则

@@ -28,6 +28,16 @@ struct ReplayPanelView: View {
 
             // 棋谱选择
             Menu {
+                ForEach(OpeningLibrary.categories) { category in
+                    Menu(category.name) {
+                        ForEach(category.games) { game in
+                            Button(game.title) {
+                                gameState.loadRecord(game)
+                            }
+                        }
+                    }
+                }
+                Divider()
                 ForEach(SampleGames.all) { game in
                     Button(game.title) {
                         gameState.loadRecord(game)

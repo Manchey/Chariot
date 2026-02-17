@@ -200,3 +200,77 @@ struct SampleGames {
         ]
     )
 }
+
+// MARK: - 开局库
+
+struct OpeningLibrary {
+
+    struct Category: Identifiable {
+        let id = UUID()
+        let name: String
+        let games: [GameRecord]
+    }
+
+    static let categories: [Category] = [
+        Category(name: "中炮类", games: [
+            SampleGames.game1,
+            game_57pao,
+            SampleGames.game3,
+        ]),
+        Category(name: "飞相类", games: [
+            SampleGames.game2,
+        ]),
+        Category(name: "仙人指路类", games: [
+            game_xrzl,
+        ]),
+    ]
+
+    /// 五七炮对屏风马
+    static let game_57pao = GameRecord(
+        title: "五七炮对屏风马",
+        redPlayer: "红方",
+        blackPlayer: "黑方",
+        result: nil,
+        initialFEN: nil,
+        moveNotations: [
+            "炮二平五", "马8进7",
+            "马二进三", "车9平8",
+            "车一平二", "马2进3",
+            "兵七进一", "卒7进1",
+            "炮八平七", "炮2平1",
+            "马八进九", "炮1进4",
+            "车九平八", "象3进5",
+        ],
+        comments: [
+            -1: "五七炮是中炮布局的重要变例。红方双炮分列五路和七路，攻守兼备。",
+            0: "中炮开局。",
+            1: "屏风马应对。",
+            8: "红方走炮八平七，形成五七炮阵型。",
+            9: "黑方炮2平1，边炮过河，积极求战。",
+        ]
+    )
+
+    /// 仙人指路对卒底炮
+    static let game_xrzl = GameRecord(
+        title: "仙人指路对卒底炮",
+        redPlayer: "红方",
+        blackPlayer: "黑方",
+        result: nil,
+        initialFEN: nil,
+        moveNotations: [
+            "兵七进一", "炮2平3",
+            "炮二平五", "象3进5",
+            "马二进三", "马8进7",
+            "车一平二", "车9进1",
+            "车二进六", "士4进5",
+            "马八进七", "卒3进1",
+        ],
+        comments: [
+            -1: "仙人指路是红方以兵开局的布局，试探黑方意图后再决定阵型。",
+            0: "挺兵七路，仙人指路，含蓄灵活。",
+            1: "黑方炮2平3，卒底炮应对，针对红方七路兵。",
+            2: "红方见黑方走卒底炮，架中炮对抗。",
+            4: "红方出车巡河。",
+        ]
+    )
+}

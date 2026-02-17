@@ -17,22 +17,31 @@ struct ContentView: View {
                 Picker("模式", selection: $gameState.mode) {
                     Text("对弈").tag(GameMode.play)
                     Text("棋谱").tag(GameMode.replay)
+                    Text("残局").tag(GameMode.puzzle)
                 }
                 .pickerStyle(.segmented)
                 .onChange(of: gameState.mode) { newMode in
                     if newMode == .play {
                         gameState.switchToPlayMode()
-                    } else if gameState.record == nil {
-                        // 切到棋谱模式时自动加载第一个示例
-                        gameState.loadRecord(SampleGames.all[0])
+                    } else if newMode == .replay {
+                        if gameState.record == nil {
+                            // 切到棋谱模式时自动加载第一个示例
+                            gameState.loadRecord(SampleGames.all[0])
+                        }
+                    } else if newMode == .puzzle {
+                        if gameState.puzzle == nil {
+                            gameState.loadPuzzle(SamplePuzzles.all[0])
+                        }
                     }
                 }
 
                 // 根据模式显示不同面板
                 if gameState.mode == .play {
                     playPanel
-                } else {
+                } else if gameState.mode == .replay {
                     ReplayPanelView(gameState: gameState)
+                } else {
+                    PuzzlePanelView(gameState: gameState)
                 }
             }
             .frame(width: 220)

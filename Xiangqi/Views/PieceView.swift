@@ -25,7 +25,7 @@ struct GameBoardView: View {
                 lastMoveMarker.position(pointFor(to))
             }
 
-            // 合法走法指示器（仅对弈模式）
+            // 合法走法指示器（对弈模式和残局模式）
             ForEach(gameState.validMoves, id: \.self) { pos in
                 let target = piece(at: pos)
                 Group {
