@@ -116,20 +116,14 @@ class GameState: ObservableObject {
         currentTurn = (currentTurn == .red) ? .black : .red
         selectedPieceId = nil
 
-        // 检查对方是否被将军或将死/困毙
-        if isInCheck(currentTurn) {
-            isCheck = true
-            if !hasLegalMoves(for: currentTurn) {
-                isGameOver = true
-                winner = (currentTurn == .red) ? .black : .red
-            }
-        } else {
+        // 吃掉老将 → 胜利
+        if let captured = captured, captured.type == .king {
+            isGameOver = true
+            winner = movingPiece.color
             isCheck = false
-            if !hasLegalMoves(for: currentTurn) {
-                // 困毙：未被将军但无合法走法
-                isGameOver = true
-                winner = (currentTurn == .red) ? .black : .red
-            }
+        } else {
+            // 仅提示将军，不限制走法
+            isCheck = isInCheck(currentTurn)
         }
     }
 
@@ -167,8 +161,8 @@ class GameState: ObservableObject {
         case .cannon:   raw = cannonMoves(for: piece)
         case .pawn:     raw = pawnMoves(for: piece)
         }
-        // 过滤掉会导致己方被将军的走法（包括将帅对面）
-        return raw.filter { !wouldBeInCheck(piece: piece, moveTo: $0) }
+        // 只保留棋子基本走法规则，不限制送将
+        return raw
     }
 
     private func isOccupiedByFriend(_ pos: Position, color: PieceColor) -> Bool {
@@ -326,7 +320,7 @@ class GameState: ObservableObject {
         return moves
     }
 
-    // MARK: - 将军 / 将死检测
+    // MARK: - 将军检测（仅提示，不限制走法）
 
     /// 检查指定颜色是否正在被将军
     func isInCheck(_ color: PieceColor) -> Bool {
@@ -337,38 +331,6 @@ class GameState: ObservableObject {
         if isAttacked(king.position, by: enemyColor, in: pieces) { return true }
         if kingsFacing(in: pieces) { return true }
         return false
-    }
-
-    /// 检查指定颜色是否还有合法走法
-    private func hasLegalMoves(for color: PieceColor) -> Bool {
-        for p in pieces where p.color == color {
-            if !calculateValidMoves(for: p).isEmpty { return true }
-        }
-        return false
-    }
-
-    /// 模拟走子后检查己方是否被将军（非法走法过滤）
-    private func wouldBeInCheck(piece: Piece, moveTo pos: Position) -> Bool {
-        let testPieces = simulateMove(piece: piece, to: pos)
-
-        guard let ownKing = testPieces.first(where: { $0.type == .king && $0.color == piece.color }) else {
-            return true
-        }
-        let enemyColor: PieceColor = piece.color == .red ? .black : .red
-
-        if isAttacked(ownKing.position, by: enemyColor, in: testPieces) { return true }
-        if kingsFacing(in: testPieces) { return true }
-        return false
-    }
-
-    /// 模拟一步走子，返回走后的棋子数组
-    private func simulateMove(piece: Piece, to pos: Position) -> [Piece] {
-        var testPieces = pieces
-        testPieces.removeAll { $0.position == pos && $0.id != piece.id }
-        if let idx = testPieces.firstIndex(where: { $0.id == piece.id }) {
-            testPieces[idx].position = pos
-        }
-        return testPieces
     }
 
     /// 检查某个位置是否被指定颜色的棋子攻击
