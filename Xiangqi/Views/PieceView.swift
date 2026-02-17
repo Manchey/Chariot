@@ -17,17 +17,23 @@ struct GameBoardView: View {
             // 棋盘底图
             BoardCanvasView(cellSize: cellSize, padding: padding)
 
-            // 合法走法指示器
+            // 上一步走法高亮
+            if let from = gameState.lastMoveFrom {
+                lastMoveMarker.position(pointFor(from))
+            }
+            if let to = gameState.lastMoveTo {
+                lastMoveMarker.position(pointFor(to))
+            }
+
+            // 合法走法指示器（仅对弈模式）
             ForEach(gameState.validMoves, id: \.self) { pos in
                 let target = piece(at: pos)
                 Group {
                     if target != nil {
-                        // 可以吃子：红色圆环
                         Circle()
                             .stroke(Color.red.opacity(0.6), lineWidth: 3)
                             .frame(width: pieceSize, height: pieceSize)
                     } else {
-                        // 可以移动：绿色小圆点
                         Circle()
                             .fill(Color.green.opacity(0.5))
                             .frame(width: cellSize * 0.25, height: cellSize * 0.25)
@@ -51,6 +57,13 @@ struct GameBoardView: View {
                 gameState.selectOrMove(at: pos)
             }
         }
+    }
+
+    /// 上一步走子的半透明方形标记
+    private var lastMoveMarker: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.yellow.opacity(0.35))
+            .frame(width: cellSize * 0.7, height: cellSize * 0.7)
     }
 
     private func piece(at pos: Position) -> Piece? {

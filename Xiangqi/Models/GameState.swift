@@ -1,14 +1,25 @@
 import SwiftUI
 
-/// 管理棋局状态：棋子、选中、走子、规则校验
+enum GameMode {
+    case play
+    case replay
+}
+
+/// 管理棋局状态：棋子、选中、走子、规则校验、棋谱回放
 class GameState: ObservableObject {
+    // MARK: - 通用状态
     @Published var pieces: [Piece] = []
     @Published var selectedPieceId: UUID? = nil
     @Published var currentTurn: PieceColor = .red
-    @Published var moveHistory: [Move] = []
     @Published var isCheck: Bool = false
     @Published var isGameOver: Bool = false
     @Published var winner: PieceColor? = nil
+    @Published var mode: GameMode = .play
+    @Published var lastMoveFrom: Position? = nil
+    @Published var lastMoveTo: Position? = nil
+
+    // MARK: - 对弈模式状态
+    @Published var moveHistory: [Move] = []
 
     struct Move {
         let piece: Piece
@@ -17,9 +28,25 @@ class GameState: ObservableObject {
         let captured: Piece?
     }
 
-    /// 当前选中棋子的合法走法
+    // MARK: - 回放模式状态
+    @Published var record: GameRecord? = nil
+    @Published var replayMoves: [(notation: String, from: Position, to: Position)] = []
+    @Published var replayIndex: Int = -1  // -1 = 初始局面
+    @Published var isAutoPlaying: Bool = false
+    private var autoPlayTimer: Timer?
+    private var replayInitialPieces: [Piece] = []
+    private var replayInitialTurn: PieceColor = .red
+
+    /// 当前步的注释
+    var currentComment: String? {
+        guard mode == .replay, let record = record else { return nil }
+        return record.comments[replayIndex]
+    }
+
+    /// 当前选中棋子的合法走法（仅对弈模式）
     var validMoves: [Position] {
-        guard let id = selectedPieceId,
+        guard mode == .play,
+              let id = selectedPieceId,
               let piece = pieces.first(where: { $0.id == id }) else {
             return []
         }
@@ -33,20 +60,24 @@ class GameState: ObservableObject {
     // MARK: - 初始局面
 
     func setupInitialPosition() {
-        pieces.removeAll()
+        pieces = Self.standardPieces()
         moveHistory.removeAll()
         selectedPieceId = nil
         currentTurn = .red
         isCheck = false
         isGameOver = false
         winner = nil
+        lastMoveFrom = nil
+        lastMoveTo = nil
+    }
 
-        // 黑方 (顶部, rows 0-4)
-        let blackBackRow: [(PieceType, Int)] = [
+    static func standardPieces() -> [Piece] {
+        var pieces: [Piece] = []
+        let backRow: [(PieceType, Int)] = [
             (.chariot, 0), (.horse, 1), (.elephant, 2), (.advisor, 3),
             (.king, 4), (.advisor, 5), (.elephant, 6), (.horse, 7), (.chariot, 8)
         ]
-        for (type, col) in blackBackRow {
+        for (type, col) in backRow {
             pieces.append(Piece(type: type, color: .black, position: Position(row: 0, col: col)))
         }
         pieces.append(Piece(type: .cannon, color: .black, position: Position(row: 2, col: 1)))
@@ -54,13 +85,7 @@ class GameState: ObservableObject {
         for col in stride(from: 0, through: 8, by: 2) {
             pieces.append(Piece(type: .pawn, color: .black, position: Position(row: 3, col: col)))
         }
-
-        // 红方 (底部, rows 5-9)
-        let redBackRow: [(PieceType, Int)] = [
-            (.chariot, 0), (.horse, 1), (.elephant, 2), (.advisor, 3),
-            (.king, 4), (.advisor, 5), (.elephant, 6), (.horse, 7), (.chariot, 8)
-        ]
-        for (type, col) in redBackRow {
+        for (type, col) in backRow {
             pieces.append(Piece(type: type, color: .red, position: Position(row: 9, col: col)))
         }
         pieces.append(Piece(type: .cannon, color: .red, position: Position(row: 7, col: 1)))
@@ -68,17 +93,28 @@ class GameState: ObservableObject {
         for col in stride(from: 0, through: 8, by: 2) {
             pieces.append(Piece(type: .pawn, color: .red, position: Position(row: 6, col: col)))
         }
+        return pieces
     }
 
-    // MARK: - 交互
+    // MARK: - 模式切换
+
+    func switchToPlayMode() {
+        stopAutoPlay()
+        mode = .play
+        record = nil
+        replayMoves = []
+        replayIndex = -1
+        setupInitialPosition()
+    }
+
+    // MARK: - 对弈交互
 
     func piece(at position: Position) -> Piece? {
         pieces.first { $0.position == position }
     }
 
-    /// 点击棋盘上的某个位置：选子或走子
     func selectOrMove(at position: Position) {
-        guard !isGameOver else { return }
+        guard mode == .play, !isGameOver else { return }
         if let selectedId = selectedPieceId {
             if validMoves.contains(position) {
                 performMove(to: position)
@@ -102,12 +138,9 @@ class GameState: ObservableObject {
         let from = movingPiece.position
         let captured = piece(at: position)
 
-        // 移除被吃的棋子
         if let captured = captured {
             pieces.removeAll { $0.id == captured.id }
         }
-
-        // 移动棋子（注意移除操作可能改变了索引）
         if let newIndex = pieces.firstIndex(where: { $0.id == selectedId }) {
             pieces[newIndex].position = position
         }
@@ -115,28 +148,24 @@ class GameState: ObservableObject {
         moveHistory.append(Move(piece: movingPiece, from: from, to: position, captured: captured))
         currentTurn = (currentTurn == .red) ? .black : .red
         selectedPieceId = nil
+        lastMoveFrom = from
+        lastMoveTo = position
 
-        // 吃掉老将 → 胜利
         if let captured = captured, captured.type == .king {
             isGameOver = true
             winner = movingPiece.color
             isCheck = false
         } else {
-            // 仅提示将军，不限制走法
             isCheck = isInCheck(currentTurn)
         }
     }
 
-    /// 悔棋
     func undoMove() {
-        guard let lastMove = moveHistory.popLast() else { return }
+        guard mode == .play, let lastMove = moveHistory.popLast() else { return }
 
-        // 把棋子移回原位
         if let idx = pieces.firstIndex(where: { $0.id == lastMove.piece.id }) {
             pieces[idx].position = lastMove.from
         }
-
-        // 恢复被吃的棋子
         if let captured = lastMove.captured {
             pieces.append(captured)
         }
@@ -146,6 +175,139 @@ class GameState: ObservableObject {
         isGameOver = false
         winner = nil
         isCheck = isInCheck(currentTurn)
+
+        // 恢复上一步的高亮
+        if let prev = moveHistory.last {
+            lastMoveFrom = prev.from
+            lastMoveTo = prev.to
+        } else {
+            lastMoveFrom = nil
+            lastMoveTo = nil
+        }
+    }
+
+    // MARK: - 棋谱加载与回放
+
+    func loadRecord(_ record: GameRecord) {
+        stopAutoPlay()
+        self.record = record
+        self.mode = .replay
+
+        // 解析初始局面
+        if let fen = record.initialFEN, let result = FENParser.parse(fen) {
+            replayInitialPieces = result.pieces
+            replayInitialTurn = result.turn
+        } else {
+            replayInitialPieces = Self.standardPieces()
+            replayInitialTurn = .red
+        }
+
+        // 逐步解析所有走法
+        replayMoves = []
+        var currentPieces = replayInitialPieces
+        var turn = replayInitialTurn
+
+        for notation in record.moveNotations {
+            if let parsed = ChineseNotation.parse(notation, pieces: currentPieces, turn: turn) {
+                replayMoves.append((notation, parsed.from, parsed.to))
+                // 应用走法以便解析下一步
+                currentPieces.removeAll { $0.position == parsed.to }
+                if let idx = currentPieces.firstIndex(where: { $0.position == parsed.from }) {
+                    currentPieces[idx].position = parsed.to
+                }
+                turn = (turn == .red) ? .black : .red
+            } else {
+                break  // 解析失败则停止
+            }
+        }
+
+        // 显示初始局面
+        replayGoTo(-1)
+    }
+
+    func replayGoTo(_ index: Int) {
+        guard mode == .replay else { return }
+        stopAutoPlay()
+        let target = max(-1, min(index, replayMoves.count - 1))
+        replayIndex = target
+
+        // 从初始局面重建到目标步数
+        pieces = replayInitialPieces
+        currentTurn = replayInitialTurn
+
+        if target >= 0 {
+            for i in 0...target {
+                let move = replayMoves[i]
+                pieces.removeAll { $0.position == move.to }
+                if let idx = pieces.firstIndex(where: { $0.position == move.from }) {
+                    pieces[idx].position = move.to
+                }
+                currentTurn = (currentTurn == .red) ? .black : .red
+            }
+            lastMoveFrom = replayMoves[target].from
+            lastMoveTo = replayMoves[target].to
+        } else {
+            lastMoveFrom = nil
+            lastMoveTo = nil
+        }
+
+        isCheck = isInCheck(currentTurn)
+        selectedPieceId = nil
+        isGameOver = false
+        winner = nil
+    }
+
+    func replayNext() {
+        guard mode == .replay, replayIndex < replayMoves.count - 1 else {
+            stopAutoPlay()
+            return
+        }
+        replayGoToAnimated(replayIndex + 1)
+    }
+
+    func replayPrevious() {
+        guard mode == .replay, replayIndex >= 0 else { return }
+        replayGoToAnimated(replayIndex - 1)
+    }
+
+    func replayFirst() {
+        replayGoToAnimated(-1)
+    }
+
+    func replayLast() {
+        replayGoToAnimated(replayMoves.count - 1)
+    }
+
+    private func replayGoToAnimated(_ index: Int) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            replayGoTo(index)
+        }
+    }
+
+    // MARK: 自动播放
+
+    func toggleAutoPlay() {
+        if isAutoPlaying {
+            stopAutoPlay()
+        } else {
+            startAutoPlay()
+        }
+    }
+
+    private func startAutoPlay() {
+        guard replayIndex < replayMoves.count - 1 else { return }
+        isAutoPlaying = true
+        autoPlayTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.replayNext()
+            }
+        }
+    }
+
+    func stopAutoPlay() {
+        isAutoPlaying = false
+        autoPlayTimer?.invalidate()
+        autoPlayTimer = nil
     }
 
     // MARK: - 走子规则
@@ -161,7 +323,6 @@ class GameState: ObservableObject {
         case .cannon:   raw = cannonMoves(for: piece)
         case .pawn:     raw = pawnMoves(for: piece)
         }
-        // 只保留棋子基本走法规则，不限制送将
         return raw
     }
 
@@ -179,8 +340,6 @@ class GameState: ObservableObject {
         return color == .red ? pos.row >= 5 : pos.row <= 4
     }
 
-    // MARK: 帅/将
-
     private func kingMoves(for piece: Piece) -> [Position] {
         let directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
         var moves: [Position] = []
@@ -192,8 +351,6 @@ class GameState: ObservableObject {
         }
         return moves
     }
-
-    // MARK: 仕/士
 
     private func advisorMoves(for piece: Piece) -> [Position] {
         let directions = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
@@ -207,8 +364,6 @@ class GameState: ObservableObject {
         return moves
     }
 
-    // MARK: 相/象
-
     private func elephantMoves(for piece: Piece) -> [Position] {
         let directions = [(2, 2), (2, -2), (-2, 2), (-2, -2)]
         var moves: [Position] = []
@@ -216,8 +371,8 @@ class GameState: ObservableObject {
             let pos = Position(row: piece.position.row + dr, col: piece.position.col + dc)
             let eye = Position(row: piece.position.row + dr / 2, col: piece.position.col + dc / 2)
             guard pos.isValid else { continue }
-            guard isOnOwnSide(pos, for: piece.color) else { continue }  // 不能过河
-            guard self.piece(at: eye) == nil else { continue }          // 塞象眼
+            guard isOnOwnSide(pos, for: piece.color) else { continue }
+            guard self.piece(at: eye) == nil else { continue }
             if !isOccupiedByFriend(pos, color: piece.color) {
                 moves.append(pos)
             }
@@ -225,15 +380,12 @@ class GameState: ObservableObject {
         return moves
     }
 
-    // MARK: 马
-
     private func horseMoves(for piece: Piece) -> [Position] {
-        // (蹩马腿方向, 目标偏移)
         let steps: [(block: (Int, Int), target: (Int, Int))] = [
-            ((-1, 0), (-2, -1)), ((-1, 0), (-2, 1)),  // 向上
-            ((1, 0),  (2, -1)),  ((1, 0),  (2, 1)),   // 向下
-            ((0, -1), (-1, -2)), ((0, -1), (1, -2)),   // 向左
-            ((0, 1),  (-1, 2)),  ((0, 1),  (1, 2)),   // 向右
+            ((-1, 0), (-2, -1)), ((-1, 0), (-2, 1)),
+            ((1, 0),  (2, -1)),  ((1, 0),  (2, 1)),
+            ((0, -1), (-1, -2)), ((0, -1), (1, -2)),
+            ((0, 1),  (-1, 2)),  ((0, 1),  (1, 2)),
         ]
         var moves: [Position] = []
         for step in steps {
@@ -242,15 +394,13 @@ class GameState: ObservableObject {
             let target = Position(row: piece.position.row + step.target.0,
                                   col: piece.position.col + step.target.1)
             guard target.isValid else { continue }
-            guard self.piece(at: block) == nil else { continue }  // 蹩马腿
+            guard self.piece(at: block) == nil else { continue }
             if !isOccupiedByFriend(target, color: piece.color) {
                 moves.append(target)
             }
         }
         return moves
     }
-
-    // MARK: 车
 
     private func chariotMoves(for piece: Piece) -> [Position] {
         var moves: [Position] = []
@@ -271,8 +421,6 @@ class GameState: ObservableObject {
         return moves
     }
 
-    // MARK: 炮
-
     private func cannonMoves(for piece: Piece) -> [Position] {
         var moves: [Position] = []
         let directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
@@ -287,7 +435,7 @@ class GameState: ObservableObject {
                         if p.color != piece.color { moves.append(pos) }
                         break
                     } else {
-                        jumped = true  // 炮架
+                        jumped = true
                     }
                 } else {
                     if !jumped { moves.append(pos) }
@@ -297,8 +445,6 @@ class GameState: ObservableObject {
         }
         return moves
     }
-
-    // MARK: 兵/卒
 
     private func pawnMoves(for piece: Piece) -> [Position] {
         var moves: [Position] = []
@@ -320,9 +466,8 @@ class GameState: ObservableObject {
         return moves
     }
 
-    // MARK: - 将军检测（仅提示，不限制走法）
+    // MARK: - 将军检测
 
-    /// 检查指定颜色是否正在被将军
     func isInCheck(_ color: PieceColor) -> Bool {
         guard let king = pieces.first(where: { $0.type == .king && $0.color == color }) else {
             return false
@@ -333,7 +478,6 @@ class GameState: ObservableObject {
         return false
     }
 
-    /// 检查某个位置是否被指定颜色的棋子攻击
     private func isAttacked(_ pos: Position, by attackerColor: PieceColor, in boardPieces: [Piece]) -> Bool {
         for p in boardPieces where p.color == attackerColor {
             if canReach(piece: p, target: pos, in: boardPieces) { return true }
@@ -341,7 +485,6 @@ class GameState: ObservableObject {
         return false
     }
 
-    /// 纯规则判断：某个棋子能否到达目标位置（不考虑将军限制）
     private func canReach(piece p: Piece, target: Position, in bp: [Piece]) -> Bool {
         guard target.isValid else { return false }
         if bp.contains(where: { $0.position == target && $0.color == p.color }) { return false }
@@ -352,16 +495,13 @@ class GameState: ObservableObject {
         switch p.type {
         case .king:
             return (abs(dr) + abs(dc) == 1) && isInPalace(target, for: p.color)
-
         case .advisor:
             return abs(dr) == 1 && abs(dc) == 1 && isInPalace(target, for: p.color)
-
         case .elephant:
             guard abs(dr) == 2 && abs(dc) == 2 else { return false }
             guard isOnOwnSide(target, for: p.color) else { return false }
             let eye = Position(row: p.position.row + dr / 2, col: p.position.col + dc / 2)
             return !bp.contains { $0.position == eye }
-
         case .horse:
             let steps: [(block: (Int, Int), target: (Int, Int))] = [
                 ((-1, 0), (-2, -1)), ((-1, 0), (-2, 1)),
@@ -379,17 +519,14 @@ class GameState: ObservableObject {
                 }
             }
             return false
-
         case .chariot:
             guard dr == 0 || dc == 0 else { return false }
             return countBetween(from: p.position, to: target, in: bp) == 0
-
         case .cannon:
             guard dr == 0 || dc == 0 else { return false }
             let between = countBetween(from: p.position, to: target, in: bp)
             let isCapture = bp.contains { $0.position == target }
             return isCapture ? (between == 1) : (between == 0)
-
         case .pawn:
             let forward = p.color == .red ? -1 : 1
             let crossed = p.color == .red ? (p.position.row <= 4) : (p.position.row >= 5)
@@ -399,7 +536,6 @@ class GameState: ObservableObject {
         }
     }
 
-    /// 两点之间（同行或同列）的棋子数量
     private func countBetween(from: Position, to: Position, in bp: [Piece]) -> Int {
         var count = 0
         if from.row == to.row {
@@ -416,7 +552,6 @@ class GameState: ObservableObject {
         return count
     }
 
-    /// 检查将帅是否在同列且中间无子（对面）
     private func kingsFacing(in bp: [Piece]) -> Bool {
         guard let redKing = bp.first(where: { $0.type == .king && $0.color == .red }),
               let blackKing = bp.first(where: { $0.type == .king && $0.color == .black }) else {
