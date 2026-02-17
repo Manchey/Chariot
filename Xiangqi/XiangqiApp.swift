@@ -7,5 +7,8 @@ struct XiangqiApp: App {
             ContentView()
         }
         .defaultSize(width: 900, height: 700)
+        .commands {
+            CommandGroup(replacing: .newItem) { }
+        }
     }
 }

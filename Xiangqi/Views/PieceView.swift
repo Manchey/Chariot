@@ -46,14 +46,18 @@ struct GameBoardView: View {
             ForEach(gameState.pieces) { piece in
                 PieceView(piece: piece,
                           isSelected: piece.id == gameState.selectedPieceId,
-                          size: pieceSize)
+                          size: pieceSize,
+                          isFlipped: gameState.isBoardFlipped)
                     .position(pointFor(piece.position))
             }
         }
         .frame(width: totalWidth, height: totalHeight)
+        .rotationEffect(gameState.isBoardFlipped ? .degrees(180) : .zero)
+        .animation(.easeInOut(duration: 0.4), value: gameState.isBoardFlipped)
         .contentShape(Rectangle())
         .onTapGesture { location in
-            if let pos = positionFor(point: location) {
+            let adjusted = adjustedPoint(location)
+            if let pos = positionFor(point: adjusted) {
                 gameState.selectOrMove(at: pos)
             }
         }
@@ -73,6 +77,14 @@ struct GameBoardView: View {
     private func pointFor(_ pos: Position) -> CGPoint {
         CGPoint(x: padding + CGFloat(pos.col) * cellSize,
                 y: padding + CGFloat(pos.row) * cellSize)
+    }
+
+    /// 翻转时将点击坐标转换回正常坐标
+    private func adjustedPoint(_ point: CGPoint) -> CGPoint {
+        if gameState.isBoardFlipped {
+            return CGPoint(x: totalWidth - point.x, y: totalHeight - point.y)
+        }
+        return point
     }
 
     private func positionFor(point: CGPoint) -> Position? {

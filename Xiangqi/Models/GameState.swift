@@ -18,6 +18,7 @@ class GameState: ObservableObject {
     @Published var mode: GameMode = .play
     @Published var lastMoveFrom: Position? = nil
     @Published var lastMoveTo: Position? = nil
+    @Published var isBoardFlipped: Bool = false
 
     // MARK: - 对弈模式状态
     @Published var moveHistory: [Move] = []

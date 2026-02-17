@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ContentView: View {
     @StateObject private var gameState = GameState()
@@ -25,7 +26,6 @@ struct ContentView: View {
                         gameState.switchToPlayMode()
                     } else if newMode == .replay {
                         if gameState.record == nil {
-                            // 切到棋谱模式时自动加载第一个示例
                             gameState.loadRecord(SampleGames.all[0])
                         }
                     } else if newMode == .puzzle {
@@ -48,6 +48,32 @@ struct ContentView: View {
             .padding()
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .toolbar {
+            ToolbarItemGroup {
+                Button(action: { gameState.isBoardFlipped.toggle() }) {
+                    Image(systemName: "arrow.up.arrow.down")
+                }
+                .help("翻转棋盘 (F)")
+
+                Button(action: openPGNFile) {
+                    Image(systemName: "doc.text")
+                }
+                .help("导入棋谱 (Cmd+O)")
+            }
+        }
+        .onAppear {
+            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                return handleKeyEvent(event) ? nil : event
+            }
+        }
+        .onChange(of: gameState.moveHistory.count) { _ in
+            SoundManager.playMoveSound()
+        }
+        .onChange(of: gameState.replayIndex) { _ in
+            if gameState.mode == .replay {
+                SoundManager.playMoveSound()
+            }
+        }
     }
 
     // MARK: - 对弈面板
@@ -181,5 +207,84 @@ struct ContentView: View {
         let to = "(\(move.to.col),\(move.to.row))"
         let capture = move.captured != nil ? "吃\(move.captured!.displayName)" : ""
         return "\(name) \(from)\u{2192}\(to) \(capture)"
+    }
+
+    // MARK: - 键盘快捷键
+
+    private func handleKeyEvent(_ event: NSEvent) -> Bool {
+        // Cmd+O: 导入棋谱
+        if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "o" {
+            openPGNFile()
+            return true
+        }
+
+        switch event.keyCode {
+        case 3:  // F 键 — 翻转棋盘
+            if !event.modifierFlags.contains(.command) {
+                gameState.isBoardFlipped.toggle()
+                return true
+            }
+        case 123: // 左箭头 — 上一步
+            if gameState.mode == .replay {
+                gameState.replayPrevious()
+                return true
+            }
+        case 124: // 右箭头 — 下一步
+            if gameState.mode == .replay {
+                gameState.replayNext()
+                return true
+            }
+        case 115: // Home — 回到开始
+            if gameState.mode == .replay {
+                gameState.replayFirst()
+                return true
+            }
+        case 119: // End — 跳到最后
+            if gameState.mode == .replay {
+                gameState.replayLast()
+                return true
+            }
+        case 49:  // 空格 — 自动播放/暂停
+            if gameState.mode == .replay {
+                gameState.toggleAutoPlay()
+                return true
+            }
+        case 6:   // Z 键 — 悔棋（对弈模式）
+            if event.modifierFlags.contains(.command) && gameState.mode == .play {
+                gameState.undoMove()
+                return true
+            }
+        default:
+            break
+        }
+        return false
+    }
+
+    // MARK: - PGN 文件导入
+
+    private func openPGNFile() {
+        let panel = NSOpenPanel()
+        panel.title = "选择棋谱文件"
+        panel.allowedContentTypes = [.plainText]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            guard let content = try? String(contentsOf: url, encoding: .utf8) else { return }
+            if let record = PGNParser.parse(content) {
+                DispatchQueue.main.async {
+                    gameState.loadRecord(record)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - 音效管理
+
+struct SoundManager {
+    static func playMoveSound() {
+        NSSound(named: "Tink")?.play()
     }
 }

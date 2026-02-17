@@ -92,6 +92,7 @@ struct PieceView: View {
     let piece: Piece
     let isSelected: Bool
     let size: CGFloat
+    var isFlipped: Bool = false
 
     var body: some View {
         let pieceColor: Color = piece.color == .red
@@ -121,5 +122,6 @@ struct PieceView: View {
                 .frame(width: size + 4, height: size + 4)
                 .opacity(isSelected ? 1 : 0)
         )
+        .rotationEffect(isFlipped ? .degrees(180) : .zero)
     }
 }
