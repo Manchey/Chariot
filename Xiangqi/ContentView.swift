@@ -57,14 +57,61 @@ struct ContentView: View {
             Text("中国象棋")
                 .font(.title.bold())
 
+            // AI 设置
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle(isOn: Binding(
+                    get: { gameState.aiEnabled },
+                    set: { _ in gameState.toggleAI() }
+                )) {
+                    Text("AI 对弈")
+                }
+
+                if gameState.aiEnabled {
+                    HStack(spacing: 8) {
+                        Text("难度:")
+                            .font(.subheadline)
+                        Picker("", selection: Binding(
+                            get: { gameState.aiDifficulty },
+                            set: { gameState.setAIDifficulty($0) }
+                        )) {
+                            ForEach(AIEngine.Difficulty.allCases, id: \.self) { d in
+                                Text(d.rawValue).tag(d)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    HStack(spacing: 8) {
+                        Text("AI 执:")
+                            .font(.subheadline)
+                        Picker("", selection: $gameState.aiColor) {
+                            Text("黑方").tag(PieceColor.black)
+                            Text("红方").tag(PieceColor.red)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                }
+            }
+
+            Divider()
+
             HStack(spacing: 8) {
                 Circle()
                     .fill(gameState.currentTurn == .red
                           ? Color(red: 0.80, green: 0.10, blue: 0.10)
                           : Color(red: 0.15, green: 0.15, blue: 0.15))
                     .frame(width: 14, height: 14)
-                Text(gameState.currentTurn == .red ? "红方走棋" : "黑方走棋")
-                    .font(.headline)
+                if gameState.isAIThinking {
+                    HStack(spacing: 4) {
+                        Text("AI 思考中")
+                            .font(.headline)
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                } else {
+                    Text(gameState.currentTurn == .red ? "红方走棋" : "黑方走棋")
+                        .font(.headline)
+                }
             }
 
             if gameState.isCheck && !gameState.isGameOver {
@@ -117,11 +164,12 @@ struct ContentView: View {
                 Button("悔棋") {
                     gameState.undoMove()
                 }
-                .disabled(gameState.moveHistory.isEmpty)
+                .disabled(gameState.moveHistory.isEmpty || gameState.isAIThinking)
 
                 Button("新对局") {
-                    gameState.setupInitialPosition()
+                    gameState.startNewGame()
                 }
+                .disabled(gameState.isAIThinking)
             }
             .buttonStyle(.bordered)
         }

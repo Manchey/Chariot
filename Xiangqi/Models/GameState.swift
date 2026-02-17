@@ -21,6 +21,11 @@ class GameState: ObservableObject {
 
     // MARK: - 对弈模式状态
     @Published var moveHistory: [Move] = []
+    @Published var aiEnabled: Bool = false
+    @Published var aiColor: PieceColor = .black
+    @Published var aiDifficulty: AIEngine.Difficulty = .medium
+    @Published var isAIThinking: Bool = false
+    private var aiEngine = AIEngine(difficulty: .medium)
 
     struct Move {
         let piece: Piece
@@ -77,6 +82,14 @@ class GameState: ObservableObject {
         winner = nil
         lastMoveFrom = nil
         lastMoveTo = nil
+        isAIThinking = false
+    }
+
+    func startNewGame() {
+        setupInitialPosition()
+        if aiEnabled && currentTurn == aiColor {
+            triggerAIMove()
+        }
     }
 
     static func standardPieces() -> [Piece] {
@@ -126,7 +139,9 @@ class GameState: ObservableObject {
             puzzleSelectOrMove(at: position)
             return
         }
-        guard mode == .play, !isGameOver else { return }
+        guard mode == .play, !isGameOver, !isAIThinking else { return }
+        // AI 回合时不允许人类操作
+        if aiEnabled && currentTurn == aiColor { return }
         if let selectedId = selectedPieceId {
             if validMoves.contains(position) {
                 performMove(to: position)
@@ -169,20 +184,70 @@ class GameState: ObservableObject {
             isCheck = false
         } else {
             isCheck = isInCheck(currentTurn)
+            // 如果轮到 AI，触发 AI 走棋
+            if aiEnabled && currentTurn == aiColor && !isGameOver {
+                triggerAIMove()
+            }
+        }
+    }
+
+    // MARK: - AI 对弈
+
+    func setAIDifficulty(_ difficulty: AIEngine.Difficulty) {
+        aiDifficulty = difficulty
+        aiEngine = AIEngine(difficulty: difficulty)
+    }
+
+    func toggleAI() {
+        aiEnabled.toggle()
+        if aiEnabled && mode == .play && currentTurn == aiColor && !isGameOver {
+            triggerAIMove()
+        }
+    }
+
+    private func triggerAIMove() {
+        guard !isAIThinking else { return }
+        isAIThinking = true
+        let currentPieces = pieces
+        let color = aiColor
+        let engine = aiEngine
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = engine.bestMove(pieces: currentPieces, for: color)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                guard let self = self, self.aiEnabled, self.mode == .play, !self.isGameOver else {
+                    self?.isAIThinking = false
+                    return
+                }
+                self.isAIThinking = false
+                if let move = result {
+                    // 选中并执行 AI 走法
+                    if let piece = self.pieces.first(where: { $0.position == move.from && $0.color == color }) {
+                        self.selectedPieceId = piece.id
+                        self.performMove(to: move.to)
+                    }
+                }
+            }
         }
     }
 
     func undoMove() {
-        guard mode == .play, let lastMove = moveHistory.popLast() else { return }
+        guard mode == .play, !isAIThinking else { return }
 
-        if let idx = pieces.firstIndex(where: { $0.id == lastMove.piece.id }) {
-            pieces[idx].position = lastMove.from
-        }
-        if let captured = lastMove.captured {
-            pieces.append(captured)
+        // AI 模式下悔棋需要撤回两步（AI 的走法 + 人的走法）
+        let stepsToUndo = (aiEnabled && moveHistory.count >= 2) ? 2 : 1
+
+        for _ in 0..<stepsToUndo {
+            guard let lastMove = moveHistory.popLast() else { break }
+            if let idx = pieces.firstIndex(where: { $0.id == lastMove.piece.id }) {
+                pieces[idx].position = lastMove.from
+            }
+            if let captured = lastMove.captured {
+                pieces.append(captured)
+            }
+            currentTurn = (currentTurn == .red) ? .black : .red
         }
 
-        currentTurn = (currentTurn == .red) ? .black : .red
         selectedPieceId = nil
         isGameOver = false
         winner = nil

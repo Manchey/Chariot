@@ -21,6 +21,7 @@
 		A10001120000000000000001 /* ReplayControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002140000000000000001 /* ReplayControlView.swift */; };
 		A10001130000000000000001 /* Puzzle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002150000000000000001 /* Puzzle.swift */; };
 		A10001140000000000000001 /* PuzzleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002160000000000000001 /* PuzzleView.swift */; };
+		A10001150000000000000001 /* AIEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002170000000000000001 /* AIEngine.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +41,7 @@
 		A10002140000000000000001 /* ReplayControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplayControlView.swift; sourceTree = "<group>"; };
 		A10002150000000000000001 /* Puzzle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Puzzle.swift; sourceTree = "<group>"; };
 		A10002160000000000000001 /* PuzzleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PuzzleView.swift; sourceTree = "<group>"; };
+		A10002170000000000000001 /* AIEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIEngine.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -84,6 +86,7 @@
 				A10002120000000000000001 /* ChineseNotation.swift */,
 				A10002130000000000000001 /* GameRecord.swift */,
 				A10002150000000000000001 /* Puzzle.swift */,
+				A10002170000000000000001 /* AIEngine.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -190,6 +193,7 @@
 				A10001120000000000000001 /* ReplayControlView.swift in Sources */,
 				A10001130000000000000001 /* Puzzle.swift in Sources */,
 				A10001140000000000000001 /* PuzzleView.swift in Sources */,
+				A10001150000000000000001 /* AIEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
