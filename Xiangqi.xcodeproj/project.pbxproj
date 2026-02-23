@@ -22,6 +22,13 @@
 		A10001130000000000000001 /* Puzzle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002150000000000000001 /* Puzzle.swift */; };
 		A10001140000000000000001 /* PuzzleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002160000000000000001 /* PuzzleView.swift */; };
 		A10001150000000000000001 /* AIEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002170000000000000001 /* AIEngine.swift */; };
+		A10001160000000000000001 /* MoveAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002180000000000000001 /* MoveAnalyzer.swift */; };
+		A10001170000000000000001 /* EvaluationBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002190000000000000001 /* EvaluationBarView.swift */; };
+		A10001180000000000000001 /* ReviewPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002200000000000000001 /* ReviewPanelView.swift */; };
+		A10001190000000000000001 /* ICCSNotation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002210000000000000001 /* ICCSNotation.swift */; };
+		A10001200000000000000001 /* UCIEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10002220000000000000001 /* UCIEngine.swift */; };
+		A10001210000000000000001 /* pikafish in Resources */ = {isa = PBXBuildFile; fileRef = A10002230000000000000001 /* pikafish */; };
+		A10001220000000000000001 /* pikafish.nnue in Resources */ = {isa = PBXBuildFile; fileRef = A10002240000000000000001 /* pikafish.nnue */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +49,13 @@
 		A10002150000000000000001 /* Puzzle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Puzzle.swift; sourceTree = "<group>"; };
 		A10002160000000000000001 /* PuzzleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PuzzleView.swift; sourceTree = "<group>"; };
 		A10002170000000000000001 /* AIEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIEngine.swift; sourceTree = "<group>"; };
+		A10002180000000000000001 /* MoveAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoveAnalyzer.swift; sourceTree = "<group>"; };
+		A10002190000000000000001 /* EvaluationBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationBarView.swift; sourceTree = "<group>"; };
+		A10002200000000000000001 /* ReviewPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewPanelView.swift; sourceTree = "<group>"; };
+		A10002210000000000000001 /* ICCSNotation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICCSNotation.swift; sourceTree = "<group>"; };
+		A10002220000000000000001 /* UCIEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UCIEngine.swift; sourceTree = "<group>"; };
+		A10002230000000000000001 /* pikafish */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; path = pikafish; sourceTree = "<group>"; };
+		A10002240000000000000001 /* pikafish.nnue */ = {isa = PBXFileReference; lastKnownFileType = file; path = pikafish.nnue; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -70,6 +84,7 @@
 				A10002020000000000000001 /* ContentView.swift */,
 				A10004030000000000000001 /* Models */,
 				A10004040000000000000001 /* Views */,
+				A10004060000000000000001 /* Resources */,
 				A10002080000000000000001 /* Assets.xcassets */,
 				A10002090000000000000001 /* Xiangqi.entitlements */,
 			);
@@ -87,6 +102,9 @@
 				A10002130000000000000001 /* GameRecord.swift */,
 				A10002150000000000000001 /* Puzzle.swift */,
 				A10002170000000000000001 /* AIEngine.swift */,
+				A10002180000000000000001 /* MoveAnalyzer.swift */,
+				A10002210000000000000001 /* ICCSNotation.swift */,
+				A10002220000000000000001 /* UCIEngine.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -98,6 +116,8 @@
 				A10002070000000000000001 /* PieceView.swift */,
 				A10002140000000000000001 /* ReplayControlView.swift */,
 				A10002160000000000000001 /* PuzzleView.swift */,
+				A10002190000000000000001 /* EvaluationBarView.swift */,
+				A10002200000000000000001 /* ReviewPanelView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -108,6 +128,15 @@
 				A10002100000000000000001 /* Xiangqi.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A10004060000000000000001 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A10002230000000000000001 /* pikafish */,
+				A10002240000000000000001 /* pikafish.nnue */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -170,6 +199,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10001080000000000000001 /* Assets.xcassets in Resources */,
+				A10001210000000000000001 /* pikafish in Resources */,
+				A10001220000000000000001 /* pikafish.nnue in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -194,6 +225,11 @@
 				A10001130000000000000001 /* Puzzle.swift in Sources */,
 				A10001140000000000000001 /* PuzzleView.swift in Sources */,
 				A10001150000000000000001 /* AIEngine.swift in Sources */,
+				A10001160000000000000001 /* MoveAnalyzer.swift in Sources */,
+				A10001170000000000000001 /* EvaluationBarView.swift in Sources */,
+				A10001180000000000000001 /* ReviewPanelView.swift in Sources */,
+				A10001190000000000000001 /* ICCSNotation.swift in Sources */,
+				A10001200000000000000001 /* UCIEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

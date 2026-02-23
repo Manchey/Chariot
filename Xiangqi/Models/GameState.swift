@@ -44,6 +44,19 @@ class GameState: ObservableObject {
     private var replayInitialPieces: [Piece] = []
     private var replayInitialTurn: PieceColor = .red
 
+    // MARK: - 分析回调
+    var analyzeCallback: ((_ piecesBefore: [Piece], _ piecesAfter: [Piece],
+                           _ movingPiece: Piece, _ from: Position, _ to: Position,
+                           _ captured: Piece?, _ moveColor: PieceColor, _ moveIndex: Int) -> Void)?
+    var aiMoveCallback: ((_ piecesAfter: [Piece]) -> Void)?
+
+    // MARK: - 复盘状态
+    @Published var isInReview: Bool = false
+    @Published var reviewIndex: Int = 0
+    private var reviewInitialPieces: [Piece] = []
+    private var reviewSavedPieces: [Piece] = []
+    private var reviewSavedTurn: PieceColor = .red
+
     // MARK: - 残局练习状态
     @Published var puzzle: Puzzle? = nil
     @Published var puzzleStepIndex: Int = 0       // 当前应走第几步
@@ -88,6 +101,7 @@ class GameState: ObservableObject {
 
     func startNewGame() {
         setupInitialPosition()
+        AIEngine.resetForNewGame()
         if aiEnabled && currentTurn == aiColor {
             triggerAIMove()
         }
@@ -165,6 +179,9 @@ class GameState: ObservableObject {
         let movingPiece = pieces[pieceIndex]
         let from = movingPiece.position
         let captured = piece(at: position)
+        let piecesBefore = pieces
+        let moveColor = currentTurn
+        let moveIndex = moveHistory.count
 
         if let captured = captured {
             pieces.removeAll { $0.id == captured.id }
@@ -179,6 +196,8 @@ class GameState: ObservableObject {
         lastMoveFrom = from
         lastMoveTo = position
 
+        let piecesAfter = pieces
+
         if let captured = captured, captured.type == .king {
             isGameOver = true
             winner = movingPiece.color
@@ -190,6 +209,9 @@ class GameState: ObservableObject {
                 triggerAIMove()
             }
         }
+
+        // 分析回调（人类走子 & AI 走子都会触发）
+        analyzeCallback?(piecesBefore, piecesAfter, movingPiece, from, position, captured, moveColor, moveIndex)
     }
 
     // MARK: - AI 对弈
@@ -226,6 +248,7 @@ class GameState: ObservableObject {
                     if let piece = self.pieces.first(where: { $0.position == move.from && $0.color == color }) {
                         self.selectedPieceId = piece.id
                         self.performMove(to: move.to)
+                        self.aiMoveCallback?(self.pieces)
                     }
                 }
             }
@@ -262,6 +285,65 @@ class GameState: ObservableObject {
             lastMoveFrom = nil
             lastMoveTo = nil
         }
+    }
+
+    // MARK: - 复盘模式
+
+    func startReview() {
+        guard mode == .play, isGameOver, !moveHistory.isEmpty else { return }
+        isInReview = true
+        reviewIndex = 0
+        reviewSavedPieces = pieces
+        reviewSavedTurn = currentTurn
+        reviewInitialPieces = Self.standardPieces()
+        reviewGoTo(0)
+    }
+
+    func reviewGoTo(_ index: Int) {
+        guard isInReview else { return }
+        let target = max(0, min(index, moveHistory.count - 1))
+        reviewIndex = target
+
+        pieces = reviewInitialPieces
+        currentTurn = .red
+
+        for i in 0...target {
+            let move = moveHistory[i]
+            pieces.removeAll { $0.position == move.to }
+            if let idx = pieces.firstIndex(where: { $0.position == move.from }) {
+                pieces[idx].position = move.to
+            }
+            currentTurn = (currentTurn == .red) ? .black : .red
+        }
+
+        lastMoveFrom = moveHistory[target].from
+        lastMoveTo = moveHistory[target].to
+        selectedPieceId = nil
+    }
+
+    func reviewNext() {
+        guard isInReview, reviewIndex < moveHistory.count - 1 else { return }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            reviewGoTo(reviewIndex + 1)
+        }
+    }
+
+    func reviewPrevious() {
+        guard isInReview, reviewIndex > 0 else { return }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            reviewGoTo(reviewIndex - 1)
+        }
+    }
+
+    func exitReview() {
+        isInReview = false
+        pieces = reviewSavedPieces
+        currentTurn = reviewSavedTurn
+        if let last = moveHistory.last {
+            lastMoveFrom = last.from
+            lastMoveTo = last.to
+        }
+        selectedPieceId = nil
     }
 
     // MARK: - 棋谱加载与回放

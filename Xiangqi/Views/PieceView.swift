@@ -5,6 +5,7 @@ struct GameBoardView: View {
     @ObservedObject var gameState: GameState
     let cellSize: CGFloat
     let padding: CGFloat
+    var hintMoves: [AIEngine.ScoredMove] = []
 
     private var boardWidth: CGFloat { 8.0 * cellSize }
     private var boardHeight: CGFloat { 9.0 * cellSize }
@@ -23,6 +24,27 @@ struct GameBoardView: View {
             }
             if let to = gameState.lastMoveTo {
                 lastMoveMarker.position(pointFor(to))
+            }
+
+            // 提示走法高亮（蓝色标记）
+            ForEach(Array(hintMoves.enumerated()), id: \.offset) { index, hint in
+                // 起点：蓝色编号圆点
+                ZStack {
+                    Circle()
+                        .fill(Color.blue.opacity(0.7))
+                        .frame(width: cellSize * 0.3, height: cellSize * 0.3)
+                    Text("\(index + 1)")
+                        .font(.system(size: cellSize * 0.18, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                .position(pointFor(hint.from))
+                .offset(x: -cellSize * 0.3, y: -cellSize * 0.3)
+
+                // 终点：蓝色方框
+                RoundedRectangle(cornerRadius: 3)
+                    .stroke(Color.blue.opacity(0.7), lineWidth: 2.5)
+                    .frame(width: cellSize * 0.6, height: cellSize * 0.6)
+                    .position(pointFor(hint.to))
             }
 
             // 合法走法指示器（对弈模式和残局模式）

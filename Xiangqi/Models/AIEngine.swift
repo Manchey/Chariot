@@ -1,12 +1,48 @@
 import Foundation
 
-/// 象棋 AI 引擎：minimax + alpha-beta 剪枝
+/// 象棋 AI 引擎：Pikafish UCI 优先，minimax 回退
 class AIEngine {
 
     enum Difficulty: String, CaseIterable {
-        case easy   = "新手"    // depth 1
-        case medium = "业余"    // depth 2
-        case hard   = "棋手"    // depth 3
+        case beginner = "入门"    // Skill Level 0
+        case easy     = "新手"    // Skill Level 3
+        case medium   = "业余"    // Skill Level 8
+        case advanced = "棋手"    // Skill Level 12
+        case hard     = "高手"    // Skill Level 16
+        case expert   = "大师"    // Skill Level 19
+        case master   = "特级"    // Skill Level 20
+
+        var skillLevel: Int {
+            switch self {
+            case .beginner: return 0
+            case .easy:     return 3
+            case .medium:   return 8
+            case .advanced: return 12
+            case .hard:     return 16
+            case .expert:   return 19
+            case .master:   return 20
+            }
+        }
+
+        var pikaDepth: Int {
+            switch self {
+            case .beginner: return 6
+            case .easy:     return 8
+            case .medium:   return 12
+            case .advanced: return 16
+            case .hard:     return 20
+            case .expert:   return 24
+            case .master:   return 28
+            }
+        }
+
+        var minimaxDepth: Int {
+            switch self {
+            case .beginner, .easy: return 1
+            case .medium, .advanced: return 2
+            case .hard, .expert, .master: return 3
+            }
+        }
     }
 
     struct AIMove {
@@ -15,23 +51,115 @@ class AIEngine {
         let score: Int
     }
 
+    struct ScoredMove {
+        let from: Position
+        let to: Position
+        let score: Int
+    }
+
     private let difficulty: Difficulty
+
+    // 共享 UCI 引擎实例
+    private static var sharedUCIEngine: UCIEngine?
+    private static var uciAvailable = false
+    private static var uciInitialized = false
+    private static let initLock = NSLock()
 
     init(difficulty: Difficulty = .medium) {
         self.difficulty = difficulty
+        Self.initializeUCIIfNeeded()
     }
 
-    private var searchDepth: Int {
-        switch difficulty {
-        case .easy:   return 1
-        case .medium: return 2
-        case .hard:   return 3
+    // MARK: - UCI 初始化
+
+    private static func initializeUCIIfNeeded() {
+        initLock.lock()
+        defer { initLock.unlock() }
+        guard !uciInitialized else { return }
+        uciInitialized = true
+
+        guard UCIEngine.isAvailable else {
+            uciAvailable = false
+            return
         }
+
+        let engine = UCIEngine()
+        let sem = DispatchSemaphore(value: 0)
+        engine.start { result in
+            switch result {
+            case .success:
+                sharedUCIEngine = engine
+                uciAvailable = true
+            case .failure:
+                uciAvailable = false
+            }
+            sem.signal()
+        }
+        // 等待最多 10 秒
+        _ = sem.wait(timeout: .now() + .seconds(10))
     }
 
-    /// 为指定颜色选择最佳走法
+    static var isUCIEngineAvailable: Bool { uciAvailable }
+
+    static func shutdownEngine() {
+        sharedUCIEngine?.shutdown()
+        sharedUCIEngine = nil
+        uciAvailable = false
+    }
+
+    static func resetForNewGame() {
+        sharedUCIEngine?.newGame()
+    }
+
+    // MARK: - 公开方法（保持签名不变，同步，须在后台线程调用）
+
     func bestMove(pieces: [Piece], for color: PieceColor) -> (from: Position, to: Position)? {
-        let depth = searchDepth
+        if Self.uciAvailable, let engine = Self.sharedUCIEngine {
+            configureSkillLevel(engine)
+            let fen = FENParser.generate(pieces: pieces, turn: color)
+            if let result = engine.searchBestMoveSync(fen: fen, depth: difficulty.pikaDepth),
+               let move = ICCSNotation.parseMove(result.bestMove) {
+                return move
+            }
+        }
+        return bestMoveMinimax(pieces: pieces, for: color)
+    }
+
+    func topMoves(pieces: [Piece], for color: PieceColor, count: Int, depth: Int) -> [ScoredMove] {
+        if Self.uciAvailable, let engine = Self.sharedUCIEngine {
+            let fen = FENParser.generate(pieces: pieces, turn: color)
+            let pikaDepth = Self.uciAvailable ? max(depth, 12) : depth
+            let result = engine.searchMultiPVSync(fen: fen, pvCount: count, depth: pikaDepth)
+            let moves = result.lines.compactMap { line -> ScoredMove? in
+                guard let firstMove = line.moves.first,
+                      let move = ICCSNotation.parseMove(firstMove) else { return nil }
+                return ScoredMove(from: move.from, to: move.to, score: line.score)
+            }
+            if !moves.isEmpty { return moves }
+        }
+        return topMovesMinimax(pieces: pieces, for: color, count: count, depth: depth)
+    }
+
+    func deepEvaluate(pieces: [Piece], for color: PieceColor, depth: Int) -> Int {
+        if Self.uciAvailable, let engine = Self.sharedUCIEngine {
+            let fen = FENParser.generate(pieces: pieces, turn: color)
+            let pikaDepth = Self.uciAvailable ? max(depth, 10) : depth
+            if let result = engine.searchBestMoveSync(fen: fen, depth: pikaDepth) {
+                // 引擎分数是走子方视角，转为红方视角
+                return color == .red ? result.score : -result.score
+            }
+        }
+        return deepEvaluateMinimax(pieces: pieces, for: color, depth: depth)
+    }
+
+    private func configureSkillLevel(_ engine: UCIEngine) {
+        engine.setSkillLevel(difficulty.skillLevel)
+    }
+
+    // MARK: - Minimax 回退实现
+
+    private func bestMoveMinimax(pieces: [Piece], for color: PieceColor) -> (from: Position, to: Position)? {
+        let depth = difficulty.minimaxDepth
         let moves = allMoves(for: color, in: pieces)
         guard !moves.isEmpty else { return nil }
 
@@ -52,8 +180,37 @@ class AIEngine {
             }
         }
 
-        // 从同分走法中随机选一个，增加变化
         return bestMoves.randomElement()
+    }
+
+    private func topMovesMinimax(pieces: [Piece], for color: PieceColor, count: Int, depth: Int) -> [ScoredMove] {
+        let moves = allMoves(for: color, in: pieces)
+        guard !moves.isEmpty else { return [] }
+
+        var scored: [ScoredMove] = []
+        for (from, to) in moves {
+            var newPieces = pieces
+            let captured = applyMove(from: from, to: to, in: &newPieces)
+            let score: Int
+            if captured?.type == .king {
+                score = 100000
+            } else {
+                score = minimax(pieces: newPieces, depth: depth - 1,
+                                alpha: Int.min, beta: Int.max,
+                                maximizing: false, aiColor: color)
+            }
+            scored.append(ScoredMove(from: from, to: to, score: score))
+        }
+
+        scored.sort { $0.score > $1.score }
+        return Array(scored.prefix(count))
+    }
+
+    private func deepEvaluateMinimax(pieces: [Piece], for color: PieceColor, depth: Int) -> Int {
+        let score = minimax(pieces: pieces, depth: depth,
+                            alpha: Int.min, beta: Int.max,
+                            maximizing: true, aiColor: color)
+        return color == .red ? score : -score
     }
 
     // MARK: - Minimax + Alpha-Beta
@@ -67,7 +224,6 @@ class AIEngine {
         let color = maximizing ? aiColor : (aiColor == .red ? .black : .red)
         let moves = allMoves(for: color, in: pieces)
 
-        // 无子可走
         if moves.isEmpty {
             return maximizing ? -90000 : 90000
         }
@@ -78,7 +234,6 @@ class AIEngine {
             for (from, to) in moves {
                 var newPieces = pieces
                 let captured = applyMove(from: from, to: to, in: &newPieces)
-                // 吃到将/帅，直接返回极值
                 if captured?.type == .king {
                     return 100000
                 }
@@ -137,17 +292,14 @@ class AIEngine {
         }
     }
 
-    /// 位置加分：鼓励棋子占据好位置
     private func positionValue(_ piece: Piece) -> Int {
         let row = piece.position.row
         let col = piece.position.col
 
         switch piece.type {
         case .pawn:
-            // 过河兵/卒价值翻倍
             let crossed = piece.color == .red ? (row <= 4) : (row >= 5)
             if crossed {
-                // 越靠近对方底线越值钱，中路兵更有价值
                 let advanceBonus = piece.color == .red ? (4 - row) * 15 : (row - 5) * 15
                 let centerBonus = (4 - abs(col - 4)) * 5
                 return 100 + advanceBonus + centerBonus
@@ -155,17 +307,14 @@ class AIEngine {
             return 0
 
         case .horse:
-            // 马在中心位置更灵活
             let centerBonus = (4 - abs(col - 4)) * 10 + (4 - abs(row - 4)) * 5
             return centerBonus
 
         case .chariot:
-            // 车占据开放线和要道
             let centerBonus = (4 - abs(col - 4)) * 5
             return centerBonus
 
         case .cannon:
-            // 炮在后方更有价值
             let backBonus = piece.color == .red ? (row - 5) * 8 : (4 - row) * 8
             return max(0, backBonus)
 
@@ -184,7 +333,6 @@ class AIEngine {
                 moves.append((piece.position, target))
             }
         }
-        // 优先吃子走法（改善剪枝效率）
         moves.sort { m1, m2 in
             let c1 = pieces.contains { $0.position == m1.1 && $0.color != color }
             let c2 = pieces.contains { $0.position == m2.1 && $0.color != color }
@@ -207,7 +355,7 @@ class AIEngine {
         return captured
     }
 
-    // MARK: - 走子规则（复用 GameState 的逻辑）
+    // MARK: - 走子规则
 
     private func validMoves(for piece: Piece, in pieces: [Piece]) -> [Position] {
         switch piece.type {

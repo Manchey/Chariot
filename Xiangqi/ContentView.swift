@@ -3,6 +3,7 @@ import AppKit
 
 struct ContentView: View {
     @StateObject private var gameState = GameState()
+    @StateObject private var analyzer = MoveAnalyzer()
 
     private let cellSize: CGFloat = 58
     private let padding: CGFloat = 36
@@ -10,7 +11,14 @@ struct ContentView: View {
     var body: some View {
         HStack(spacing: 0) {
             // 左侧：棋盘
-            GameBoardView(gameState: gameState, cellSize: cellSize, padding: padding)
+            GameBoardView(gameState: gameState, cellSize: cellSize, padding: padding,
+                          hintMoves: analyzer.hintMoves)
+
+            // 评估条（仅对弈模式显示）
+            if gameState.mode == .play {
+                EvaluationBarView(score: analyzer.evaluationScore)
+                    .padding(.vertical, padding)
+            }
 
             // 右侧：面板
             VStack(alignment: .leading, spacing: 12) {
@@ -21,9 +29,11 @@ struct ContentView: View {
                     Text("残局").tag(GameMode.puzzle)
                 }
                 .pickerStyle(.segmented)
+                .disabled(gameState.isInReview)
                 .onChange(of: gameState.mode) { newMode in
                     if newMode == .play {
                         gameState.switchToPlayMode()
+                        analyzer.reset()
                     } else if newMode == .replay {
                         if gameState.record == nil {
                             gameState.loadRecord(SampleGames.all[0])
@@ -36,7 +46,9 @@ struct ContentView: View {
                 }
 
                 // 根据模式显示不同面板
-                if gameState.mode == .play {
+                if gameState.isInReview {
+                    ReviewPanelView(gameState: gameState, analyzer: analyzer)
+                } else if gameState.mode == .play {
                     playPanel
                 } else if gameState.mode == .replay {
                     ReplayPanelView(gameState: gameState)
@@ -62,17 +74,38 @@ struct ContentView: View {
             }
         }
         .onAppear {
+            setupAnalyzerCallbacks()
             NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                 return handleKeyEvent(event) ? nil : event
             }
         }
         .onChange(of: gameState.moveHistory.count) { _ in
             SoundManager.playMoveSound()
+            // 走子后清除提示
+            analyzer.clearHints()
         }
         .onChange(of: gameState.replayIndex) { _ in
             if gameState.mode == .replay {
                 SoundManager.playMoveSound()
             }
+        }
+    }
+
+    private func setupAnalyzerCallbacks() {
+        gameState.analyzeCallback = { [weak analyzer] piecesBefore, piecesAfter, movingPiece, from, to, captured, moveColor, moveIndex in
+            analyzer?.analyzeMove(
+                piecesBefore: piecesBefore,
+                piecesAfter: piecesAfter,
+                movingPiece: movingPiece,
+                from: from,
+                to: to,
+                captured: captured,
+                moveColor: moveColor,
+                moveIndex: moveIndex
+            )
+        }
+        gameState.aiMoveCallback = { [weak analyzer] piecesAfter in
+            analyzer?.updateEvaluation(pieces: piecesAfter)
         }
     }
 
@@ -104,7 +137,7 @@ struct ContentView: View {
                                 Text(d.rawValue).tag(d)
                             }
                         }
-                        .pickerStyle(.segmented)
+                        .pickerStyle(.menu)
                     }
 
                     HStack(spacing: 8) {
@@ -138,6 +171,17 @@ struct ContentView: View {
                     Text(gameState.currentTurn == .red ? "红方走棋" : "黑方走棋")
                         .font(.headline)
                 }
+
+                Spacer()
+
+                // 最新走法评分
+                if let grade = analyzer.lastMoveGrade {
+                    gradeView(grade)
+                }
+                if analyzer.isAnalyzing {
+                    ProgressView()
+                        .controlSize(.mini)
+                }
             }
 
             if gameState.isCheck && !gameState.isGameOver {
@@ -147,16 +191,37 @@ struct ContentView: View {
             }
 
             if gameState.isGameOver, let winner = gameState.winner {
-                Text(winner == .red ? "红方胜！" : "黑方胜！")
-                    .font(.title2.bold())
-                    .foregroundColor(winner == .red
-                                     ? Color(red: 0.80, green: 0.10, blue: 0.10)
-                                     : Color(red: 0.15, green: 0.15, blue: 0.15))
-                    .padding(10)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.15)))
+                VStack(spacing: 8) {
+                    Text(winner == .red ? "红方胜！" : "黑方胜！")
+                        .font(.title2.bold())
+                        .foregroundColor(winner == .red
+                                         ? Color(red: 0.80, green: 0.10, blue: 0.10)
+                                         : Color(red: 0.15, green: 0.15, blue: 0.15))
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.15)))
+
+                    Button("复盘") {
+                        let moves = gameState.moveHistory.map { (piece: $0.piece, from: $0.from, to: $0.to, captured: $0.captured) }
+                        analyzer.generateFullReview(moves: moves, initialPieces: GameState.standardPieces())
+                        gameState.startReview()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             }
 
             Divider()
+
+            // 提示按钮
+            if gameState.aiEnabled && !gameState.isGameOver && !gameState.isAIThinking {
+                Button("提示(\(analyzer.hintsRemaining))") {
+                    let playerColor: PieceColor = gameState.aiColor == .red ? .black : .red
+                    if gameState.currentTurn == playerColor {
+                        analyzer.requestHint(pieces: gameState.pieces, for: playerColor)
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(analyzer.hintsRemaining <= 0 || gameState.currentTurn == gameState.aiColor)
+            }
 
             Text("走法记录")
                 .font(.headline)
@@ -170,6 +235,12 @@ struct ContentView: View {
                                     .foregroundColor(.secondary)
                                     .frame(width: 30, alignment: .trailing)
                                 Text(moveDescription(move))
+                                Spacer()
+                                if index < analyzer.reviewAnalyses.count {
+                                    Text(analyzer.reviewAnalyses[index].grade.symbol)
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .foregroundColor(gradeTextColor(analyzer.reviewAnalyses[index].grade))
+                                }
                             }
                             .font(.system(.body, design: .monospaced))
                             .id(index)
@@ -194,10 +265,44 @@ struct ContentView: View {
 
                 Button("新对局") {
                     gameState.startNewGame()
+                    analyzer.reset()
                 }
                 .disabled(gameState.isAIThinking)
             }
             .buttonStyle(.bordered)
+        }
+    }
+
+    private func gradeView(_ grade: MoveGrade) -> some View {
+        HStack(spacing: 3) {
+            Text(grade.symbol)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+            Text(grade.rawValue)
+                .font(.system(size: 12))
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(RoundedRectangle(cornerRadius: 4).fill(gradeBackgroundColor(grade)))
+    }
+
+    private func gradeBackgroundColor(_ grade: MoveGrade) -> Color {
+        switch grade {
+        case .brilliant: return .green
+        case .good:      return .blue
+        case .dubious:   return .yellow
+        case .mistake:   return .orange
+        case .blunder:   return .red
+        }
+    }
+
+    private func gradeTextColor(_ grade: MoveGrade) -> Color {
+        switch grade {
+        case .brilliant: return .green
+        case .good:      return .blue
+        case .dubious:   return .orange
+        case .mistake:   return .orange
+        case .blunder:   return .red
         }
     }
 
