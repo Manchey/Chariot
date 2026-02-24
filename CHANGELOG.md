@@ -388,3 +388,15 @@ Expanded from 3 to 7 levels / 从 3 级扩展到 7 级：
 - **Checkmate auto-loss / 将死直接判负**
   - After each move, if the side to move is in check and has no legal response, the game ends immediately and the attacker wins.
   - 每步结束后若被将方处于将军状态且无任何合法应着，立即判负。
+
+### Fast testing mode / 快速测试模式
+
+- **AI vs AI quick test button / AI 自对弈快测按钮**
+  - Added a start-screen action to launch AI-vs-AI autoplay for rapid regression testing.
+  - 双方均由 AI 连续走子，用于快速验证规则与稳定性。
+- **Fast move cadence / 快速出子节奏**
+  - Reduces AI move delay in fast-test mode for quick progression.
+  - 快测模式下缩短 AI 出子延迟。
+- **Noise reduction during test runs / 快测时减少干扰**
+  - Skips move sound and move-analysis callbacks during fast-test mode to avoid slowing down mass move playback.
+  - 快测模式下关闭走子音效与每步分析回调，避免拖慢测试过程。

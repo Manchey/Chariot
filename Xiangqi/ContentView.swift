@@ -37,7 +37,9 @@ struct ContentView: View {
             }
         }
         .onChange(of: gameState.moveHistory.count) { _ in
-            SoundManager.playMoveSound()
+            if !gameState.isFastAITestMode {
+                SoundManager.playMoveSound()
+            }
             analyzer.clearHints()
         }
     }
@@ -98,18 +100,27 @@ struct ContentView: View {
             .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.08)))
             .frame(width: 340)
 
-            Button("开始对局") {
-                startGameFromSetup()
+            HStack(spacing: 10) {
+                Button("开始对局") {
+                    startGameFromSetup()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+
+                Button("AI 自对弈快测") {
+                    startFastAITestFromSetup()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
     }
 
     private func setupAnalyzerCallbacks() {
-        gameState.analyzeCallback = { [weak analyzer] piecesBefore, piecesAfter, movingPiece, from, to, captured, moveColor, moveIndex in
+        gameState.analyzeCallback = { [weak analyzer, weak gameState] piecesBefore, piecesAfter, movingPiece, from, to, captured, moveColor, moveIndex in
+            guard gameState?.isFastAITestMode != true else { return }
             analyzer?.analyzeMove(
                 piecesBefore: piecesBefore,
                 piecesAfter: piecesAfter,
@@ -121,7 +132,8 @@ struct ContentView: View {
                 moveIndex: moveIndex
             )
         }
-        gameState.aiMoveCallback = { [weak analyzer] piecesAfter in
+        gameState.aiMoveCallback = { [weak analyzer, weak gameState] piecesAfter in
+            guard gameState?.isFastAITestMode != true else { return }
             analyzer?.updateEvaluation(pieces: piecesAfter)
         }
     }
@@ -134,10 +146,18 @@ struct ContentView: View {
         showingStartScreen = false
     }
 
+    private func startFastAITestFromSetup() {
+        analyzer.reset()
+        gameState.setAIDifficulty(setupDifficulty)
+        gameState.startFastAITestGame()
+        showingStartScreen = false
+    }
+
     private func returnToStartScreen() {
         setupDifficulty = gameState.aiDifficulty
         setupAIColor = gameState.aiColor
         analyzer.reset()
+        gameState.exitFastAITestMode()
         gameState.setupInitialPosition()
         showingStartScreen = true
     }
@@ -156,6 +176,11 @@ struct ContentView: View {
                     .font(.subheadline)
                 Text("AI 执：\(gameState.aiColor == .red ? "红方" : "黑方")")
                     .font(.subheadline)
+                if gameState.isFastAITestMode {
+                    Text("快测模式：AI 红黑自对弈（已关闭音效/分析）")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
 
             Divider()
@@ -226,7 +251,7 @@ struct ContentView: View {
                     }
                 }
                 .buttonStyle(.bordered)
-                .disabled(gameState.currentTurn == gameState.aiColor)
+                .disabled(gameState.currentTurn == gameState.aiColor || gameState.isFastAITestMode)
             }
 
             if !analyzer.hintMoves.isEmpty {
@@ -313,7 +338,7 @@ struct ContentView: View {
                 Button("悔棋") {
                     gameState.undoMove()
                 }
-                .disabled(gameState.moveHistory.isEmpty || gameState.isAIThinking)
+                .disabled(gameState.moveHistory.isEmpty || gameState.isAIThinking || gameState.isFastAITestMode)
 
                 Button("开始页") {
                     returnToStartScreen()

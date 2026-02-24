@@ -19,7 +19,9 @@ class GameState: ObservableObject {
     @Published var aiColor: PieceColor = .black
     @Published var aiDifficulty: AIEngine.Difficulty = .medium
     @Published var isAIThinking: Bool = false
+    @Published var isFastAITestMode: Bool = false
     private var aiEngine = AIEngine(difficulty: .medium)
+    private var aiMoveDelaySeconds: Double = 0.3
 
     struct Move {
         let piece: Piece
@@ -70,11 +72,25 @@ class GameState: ObservableObject {
     }
 
     func startNewGame() {
+        isFastAITestMode = false
+        aiMoveDelaySeconds = 0.3
         setupInitialPosition()
         AIEngine.resetForNewGame()
-        if aiEnabled && currentTurn == aiColor {
-            triggerAIMove()
-        }
+        triggerAIMoveIfNeeded()
+    }
+
+    func startFastAITestGame() {
+        isFastAITestMode = true
+        aiEnabled = true
+        aiMoveDelaySeconds = 0.03
+        setupInitialPosition()
+        AIEngine.resetForNewGame()
+        triggerAIMoveIfNeeded()
+    }
+
+    func exitFastAITestMode() {
+        isFastAITestMode = false
+        aiMoveDelaySeconds = 0.3
     }
 
     static func standardPieces() -> [Piece] {
@@ -110,6 +126,7 @@ class GameState: ObservableObject {
 
     func selectOrMove(at position: Position) {
         guard !isGameOver, !isAIThinking, !isInReview else { return }
+        if isFastAITestMode { return }
         // AI 回合时不允许人类操作
         if aiEnabled && currentTurn == aiColor { return }
         if let selectedId = selectedPieceId {
@@ -195,12 +212,13 @@ class GameState: ObservableObject {
         guard !isAIThinking else { return }
         isAIThinking = true
         let currentPieces = pieces
-        let color = aiColor
+        let color = isFastAITestMode ? currentTurn : aiColor
         let engine = aiEngine
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = engine.bestMove(pieces: currentPieces, for: color)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            let delay = self?.aiMoveDelaySeconds ?? 0.3
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 guard let self = self, self.aiEnabled, !self.isGameOver else {
                     self?.isAIThinking = false
                     return
@@ -219,7 +237,8 @@ class GameState: ObservableObject {
     }
 
     private func triggerAIMoveIfNeeded() {
-        guard aiEnabled, currentTurn == aiColor, !isGameOver, !isAIThinking, !isInReview else { return }
+        guard aiEnabled, !isGameOver, !isAIThinking, !isInReview else { return }
+        if !isFastAITestMode && currentTurn != aiColor { return }
         triggerAIMove()
     }
 
