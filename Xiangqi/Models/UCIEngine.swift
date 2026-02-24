@@ -81,7 +81,14 @@ class UCIEngine {
             self.setupOutputReading(stdoutPipe)
 
             process.terminationHandler = { [weak self] _ in
-                self?.isReady = false
+                guard let self = self else { return }
+                self.serialQueue.async {
+                    self.isReady = false
+                    self.process = nil
+                    self.stdinPipe = nil
+                    self.stdoutPipe = nil
+                    self.lineSignal.signal()
+                }
             }
 
             do {
@@ -270,9 +277,19 @@ class UCIEngine {
 
     // MARK: - Private: I/O
 
-    private func sendCommand(_ cmd: String) {
-        guard let data = (cmd + "\n").data(using: .utf8) else { return }
-        stdinPipe?.fileHandleForWriting.write(data)
+    @discardableResult
+    private func sendCommand(_ cmd: String) -> Bool {
+        guard isReady || cmd == "uci" else { return false }
+        guard let process = process, process.isRunning,
+              let handle = stdinPipe?.fileHandleForWriting else { return false }
+        guard let data = (cmd + "\n").data(using: .utf8) else { return false }
+        do {
+            try handle.write(contentsOf: data)
+            return true
+        } catch {
+            isReady = false
+            return false
+        }
     }
 
     private func setupOutputReading(_ pipe: Pipe) {
@@ -332,6 +349,14 @@ class UCIEngine {
         var collected: [String] = []
 
         while Date() < deadline {
+            if !isProcessRunning() {
+                lineLock.lock()
+                collected.append(contentsOf: lineBuffer)
+                lineBuffer.removeAll()
+                lineLock.unlock()
+                return collected
+            }
+
             let remaining = deadline.timeIntervalSinceNow
             if remaining <= 0 { break }
             if lineSignal.wait(timeout: .now() + .milliseconds(100)) == .success {
@@ -350,7 +375,7 @@ class UCIEngine {
         }
 
         // Timeout: force stop
-        sendCommand("stop")
+        _ = sendCommand("stop")
         Thread.sleep(forTimeInterval: 0.2)
         lineLock.lock()
         collected.append(contentsOf: lineBuffer)
@@ -358,6 +383,10 @@ class UCIEngine {
         lineLock.unlock()
 
         return collected
+    }
+
+    private func isProcessRunning() -> Bool {
+        process?.isRunning == true
     }
 
     // MARK: - Private: Output Parsing
