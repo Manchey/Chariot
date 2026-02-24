@@ -160,9 +160,7 @@ class GameState: ObservableObject {
         } else {
             isCheck = isInCheck(currentTurn)
             // 如果轮到 AI，触发 AI 走棋
-            if aiEnabled && currentTurn == aiColor && !isGameOver {
-                triggerAIMove()
-            }
+            triggerAIMoveIfNeeded()
         }
 
         // 分析回调（人类走子 & AI 走子都会触发）
@@ -178,16 +176,12 @@ class GameState: ObservableObject {
 
     func setAIColor(_ color: PieceColor) {
         aiColor = color
-        if aiEnabled && currentTurn == aiColor && !isGameOver && !isAIThinking {
-            triggerAIMove()
-        }
+        triggerAIMoveIfNeeded()
     }
 
     func toggleAI() {
         aiEnabled.toggle()
-        if aiEnabled && currentTurn == aiColor && !isGameOver {
-            triggerAIMove()
-        }
+        triggerAIMoveIfNeeded()
     }
 
     private func triggerAIMove() {
@@ -215,6 +209,11 @@ class GameState: ObservableObject {
                 }
             }
         }
+    }
+
+    private func triggerAIMoveIfNeeded() {
+        guard aiEnabled, currentTurn == aiColor, !isGameOver, !isAIThinking, !isInReview else { return }
+        triggerAIMove()
     }
 
     func undoMove() {
@@ -247,6 +246,8 @@ class GameState: ObservableObject {
             lastMoveFrom = nil
             lastMoveTo = nil
         }
+
+        triggerAIMoveIfNeeded()
     }
 
     /// 回退到指定走法（包含该步），用于从走法记录快速回到当时局面
@@ -292,9 +293,7 @@ class GameState: ObservableObject {
         moveHistory = rebuiltHistory
         isCheck = isGameOver ? false : isInCheck(currentTurn)
 
-        if aiEnabled && currentTurn == aiColor && !isGameOver {
-            triggerAIMove()
-        }
+        triggerAIMoveIfNeeded()
     }
 
     // MARK: - 复盘模式
@@ -354,6 +353,7 @@ class GameState: ObservableObject {
             lastMoveTo = last.to
         }
         selectedPieceId = nil
+        triggerAIMoveIfNeeded()
     }
 
     // MARK: - 走子规则
