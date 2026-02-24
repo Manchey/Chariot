@@ -229,20 +229,71 @@ struct ContentView: View {
                 .disabled(gameState.currentTurn == gameState.aiColor)
             }
 
+            if !analyzer.hintMoves.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("候选着法")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        if let source = analyzer.hintSource {
+                            Text(source == .cloud ? "云库" : "本地")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    ForEach(Array(analyzer.hintMoves.enumerated()), id: \.offset) { idx, move in
+                        HStack(spacing: 6) {
+                            Text("\(idx + 1).")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .frame(width: 18, alignment: .trailing)
+
+                            Text(hintMoveDescription(move))
+                                .font(.system(size: 12, design: .monospaced))
+                                .lineLimit(1)
+
+                            Spacer(minLength: 0)
+
+                            Text(hintScoreText(move.score))
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundColor(hintScoreColor(rank: idx))
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(Color.blue.opacity(0.05)))
+                    }
+                }
+            }
+
             Text("走法记录")
                 .font(.headline)
 
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 6) {
+                            Text("")
+                                .frame(width: 24)
+                            Text("红")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.red)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text("黑")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.horizontal, 4)
+
                         ForEach(movePairs, id: \.turn) { pair in
                             HStack(spacing: 6) {
                                 Text("\(pair.turn).")
                                     .foregroundColor(.secondary)
                                     .frame(width: 24, alignment: .trailing)
 
-                                moveRecordCell(index: pair.redIndex, move: pair.redMove, isRed: true)
-                                moveRecordCell(index: pair.blackIndex, move: pair.blackMove, isRed: false)
+                                moveRecordCell(index: pair.redIndex, move: pair.redMove)
+                                moveRecordCell(index: pair.blackIndex, move: pair.blackMove)
                             }
                             .id(pair.turn)
                         }
@@ -339,16 +390,9 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private func moveRecordCell(index: Int?, move: GameState.Move?, isRed: Bool) -> some View {
+    private func moveRecordCell(index: Int?, move: GameState.Move?) -> some View {
         if let index = index, let move = move {
             HStack(spacing: 4) {
-                Text(isRed ? "红" : "黑")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(isRed ? Color.red : Color.black.opacity(0.85)))
-
                 Text(moveDescription(move))
                     .lineLimit(1)
 
@@ -375,6 +419,22 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: 5)
                 .fill(Color.clear)
                 .frame(maxWidth: .infinity, minHeight: 28)
+        }
+    }
+
+    private func hintMoveDescription(_ move: AIEngine.ScoredMove) -> String {
+        "(\(move.from.col),\(move.from.row)) \u{2192} (\(move.to.col),\(move.to.row))"
+    }
+
+    private func hintScoreText(_ score: Int) -> String {
+        String(format: "%+d", score)
+    }
+
+    private func hintScoreColor(rank: Int) -> Color {
+        switch rank {
+        case 0: return .blue
+        case 1: return .blue.opacity(0.8)
+        default: return .secondary
         }
     }
 

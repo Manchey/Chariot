@@ -44,9 +44,15 @@ struct MoveAnalysis {
 
 /// AI 辅助学习分析器，独立于 GameState 的 ObservableObject
 class MoveAnalyzer: ObservableObject {
+    enum HintSource {
+        case cloud
+        case local
+    }
+
     @Published var lastMoveGrade: MoveGrade? = nil
     @Published var evaluationScore: Int = 0
     @Published var hintMoves: [AIEngine.ScoredMove] = []
+    @Published var hintSource: HintSource? = nil
     @Published var reviewAnalyses: [MoveAnalysis] = []
     @Published var isAnalyzing: Bool = false
 
@@ -136,11 +142,13 @@ class MoveAnalyzer: ObservableObject {
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let cloudMoves = engine.cloudHintMoves(pieces: pieces, for: color, count: 3)
+            let source: HintSource = cloudMoves.isEmpty ? .local : .cloud
             let moves = cloudMoves.isEmpty
-                ? engine.topMoves(pieces: pieces, for: color, count: 3, depth: depth)
-                : cloudMoves
+            ? engine.topMoves(pieces: pieces, for: color, count: 3, depth: depth)
+            : cloudMoves
             DispatchQueue.main.async {
                 self?.hintMoves = moves
+                self?.hintSource = moves.isEmpty ? nil : source
             }
         }
     }
@@ -148,6 +156,7 @@ class MoveAnalyzer: ObservableObject {
     /// 清除提示
     func clearHints() {
         hintMoves = []
+        hintSource = nil
     }
 
     /// 对局回退后截断已有分析结果，避免与走法记录错位
@@ -161,6 +170,7 @@ class MoveAnalyzer: ObservableObject {
         lastMoveGrade = nil
         evaluationScore = 0
         hintMoves = []
+        hintSource = nil
         reviewAnalyses = []
         isAnalyzing = false
     }
