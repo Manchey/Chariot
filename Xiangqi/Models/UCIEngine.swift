@@ -37,6 +37,10 @@ enum UCIEngineError: Error {
 
 /// 管理 Pikafish 进程的 UCI 协议通信层
 class UCIEngine {
+    private struct EngineResourceConfig {
+        let threads: Int
+        let hashMB: Int
+    }
 
     private var process: Process?
     private var stdinPipe: Pipe?
@@ -94,8 +98,9 @@ class UCIEngine {
                 return
             }
 
-            self.sendCommand("setoption name Threads value 2")
-            self.sendCommand("setoption name Hash value 64")
+            let resourceConfig = Self.recommendedResourceConfig()
+            self.sendCommand("setoption name Threads value \(resourceConfig.threads)")
+            self.sendCommand("setoption name Hash value \(resourceConfig.hashMB)")
             self.sendCommand("setoption name UCI_ShowWDL value true")
 
             self.sendCommand("isready")
@@ -240,6 +245,27 @@ class UCIEngine {
             return url
         }
         return nil
+    }
+
+    private static func recommendedResourceConfig() -> EngineResourceConfig {
+        let processInfo = ProcessInfo.processInfo
+        let activeCores = max(1, processInfo.activeProcessorCount)
+
+        // 给 UI 和系统留出余量，避免把前台交互拖卡。
+        let threads: Int
+        if activeCores <= 2 {
+            threads = activeCores
+        } else {
+            threads = min(8, activeCores - 1)
+        }
+
+        let totalMemoryMB = Int(processInfo.physicalMemory / (1024 * 1024))
+        // 使用约 1/16 物理内存作为 Hash，限制在合理范围内。
+        let rawHash = max(64, totalMemoryMB / 16)
+        let clampedHash = min(1024, rawHash)
+        let roundedHash = max(64, (clampedHash / 16) * 16)
+
+        return EngineResourceConfig(threads: max(1, threads), hashMB: roundedHash)
     }
 
     // MARK: - Private: I/O
