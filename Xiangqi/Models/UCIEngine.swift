@@ -253,7 +253,6 @@ class UCIEngine {
 
     @discardableResult
     private func sendCommand(_ cmd: String) -> Bool {
-        guard isReady || cmd == "uci" else { return false }
         guard let process = process, process.isRunning,
               let handle = stdinPipe?.fileHandleForWriting else { return false }
         guard let data = (cmd + "\n").data(using: .utf8) else { return false }
