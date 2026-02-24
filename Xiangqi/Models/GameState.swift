@@ -249,6 +249,54 @@ class GameState: ObservableObject {
         }
     }
 
+    /// 回退到指定走法（包含该步），用于从走法记录快速回到当时局面
+    func rollbackToMove(_ index: Int) {
+        guard !isAIThinking, !isInReview, !moveHistory.isEmpty else { return }
+        let target = max(0, min(index, moveHistory.count - 1))
+        let retainedMoves = Array(moveHistory.prefix(target + 1))
+
+        pieces = Self.standardPieces()
+        currentTurn = .red
+        selectedPieceId = nil
+        isGameOver = false
+        winner = nil
+        isCheck = false
+        lastMoveFrom = nil
+        lastMoveTo = nil
+
+        var rebuiltHistory: [Move] = []
+        for oldMove in retainedMoves {
+            guard let movingIdx = pieces.firstIndex(where: { $0.position == oldMove.from }) else { continue }
+
+            let movingPiece = pieces[movingIdx]
+            let captured = piece(at: oldMove.to)
+            if let captured = captured {
+                pieces.removeAll { $0.id == captured.id }
+            }
+            if let idx = pieces.firstIndex(where: { $0.id == movingPiece.id }) {
+                pieces[idx].position = oldMove.to
+            }
+
+            rebuiltHistory.append(Move(piece: movingPiece, from: oldMove.from, to: oldMove.to, captured: captured))
+            currentTurn = (currentTurn == .red) ? .black : .red
+            lastMoveFrom = oldMove.from
+            lastMoveTo = oldMove.to
+
+            if let captured = captured, captured.type == .king {
+                isGameOver = true
+                winner = movingPiece.color
+                break
+            }
+        }
+
+        moveHistory = rebuiltHistory
+        isCheck = isGameOver ? false : isInCheck(currentTurn)
+
+        if aiEnabled && currentTurn == aiColor && !isGameOver {
+            triggerAIMove()
+        }
+    }
+
     // MARK: - 复盘模式
 
     func startReview() {

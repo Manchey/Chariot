@@ -26,28 +26,9 @@ struct GameBoardView: View {
                 lastMoveMarker.position(pointFor(to))
             }
 
-            // 提示走法高亮（蓝色标记）
-            ForEach(Array(hintMoves.enumerated()), id: \.offset) { index, hint in
-                // 起点：蓝色编号圆点
-                ZStack {
-                    Circle()
-                        .fill(Color.blue.opacity(0.7))
-                        .frame(width: cellSize * 0.3, height: cellSize * 0.3)
-                    Text("\(index + 1)")
-                        .font(.system(size: cellSize * 0.18, weight: .bold))
-                        .foregroundColor(.white)
-                }
-                .position(pointFor(hint.from))
-                .offset(x: -cellSize * 0.3, y: -cellSize * 0.3)
+            hintArrowsLayer
 
-                // 终点：蓝色方框
-                RoundedRectangle(cornerRadius: 3)
-                    .stroke(Color.blue.opacity(0.7), lineWidth: 2.5)
-                    .frame(width: cellSize * 0.6, height: cellSize * 0.6)
-                    .position(pointFor(hint.to))
-            }
-
-            // 合法走法指示器（对弈模式和残局模式）
+            // 合法走法指示器
             ForEach(gameState.validMoves, id: \.self) { pos in
                 let target = piece(at: pos)
                 Group {
@@ -68,6 +49,7 @@ struct GameBoardView: View {
             ForEach(gameState.pieces) { piece in
                 PieceView(piece: piece,
                           isSelected: piece.id == gameState.selectedPieceId,
+                          isLastMoved: piece.position == gameState.lastMoveTo,
                           size: pieceSize,
                           isFlipped: gameState.isBoardFlipped)
                     .position(pointFor(piece.position))
@@ -90,6 +72,62 @@ struct GameBoardView: View {
         RoundedRectangle(cornerRadius: 4)
             .fill(Color.yellow.opacity(0.35))
             .frame(width: cellSize * 0.7, height: cellSize * 0.7)
+    }
+
+    private var hintArrowsLayer: some View {
+        Canvas { context, _ in
+            for (index, hint) in hintMoves.enumerated() {
+                let from = pointFor(hint.from)
+                let to = pointFor(hint.to)
+                let arrowColor = Color.blue.opacity(0.85)
+
+                let dx = to.x - from.x
+                let dy = to.y - from.y
+                let len = max(1, sqrt(dx * dx + dy * dy))
+                let ux = dx / len
+                let uy = dy / len
+                let start = CGPoint(x: from.x + ux * (pieceSize * 0.35),
+                                    y: from.y + uy * (pieceSize * 0.35))
+                let end = CGPoint(x: to.x - ux * (pieceSize * 0.45),
+                                  y: to.y - uy * (pieceSize * 0.45))
+
+                var line = Path()
+                line.move(to: start)
+                line.addLine(to: end)
+                context.stroke(line, with: .color(arrowColor),
+                               style: StrokeStyle(lineWidth: 3, lineCap: .round))
+
+                let headLength = cellSize * 0.22
+                let headWidth = cellSize * 0.14
+                let base = CGPoint(x: end.x - ux * headLength, y: end.y - uy * headLength)
+                let px = -uy
+                let py = ux
+                let left = CGPoint(x: base.x + px * headWidth, y: base.y + py * headWidth)
+                let right = CGPoint(x: base.x - px * headWidth, y: base.y - py * headWidth)
+
+                var head = Path()
+                head.move(to: end)
+                head.addLine(to: left)
+                head.addLine(to: right)
+                head.closeSubpath()
+                context.fill(head, with: .color(arrowColor))
+
+                let labelCenter = CGPoint(x: start.x - px * cellSize * 0.16,
+                                          y: start.y - py * cellSize * 0.16)
+                let labelRect = CGRect(x: labelCenter.x - cellSize * 0.14,
+                                       y: labelCenter.y - cellSize * 0.14,
+                                       width: cellSize * 0.28,
+                                       height: cellSize * 0.28)
+                context.fill(Path(ellipseIn: labelRect), with: .color(Color.blue.opacity(0.22)))
+                context.stroke(Path(ellipseIn: labelRect), with: .color(arrowColor), lineWidth: 2)
+                context.draw(
+                    Text("\(index + 1)")
+                        .font(.system(size: cellSize * 0.18, weight: .bold))
+                        .foregroundColor(.white),
+                    at: labelCenter
+                )
+            }
+        }
     }
 
     private func piece(at pos: Position) -> Piece? {

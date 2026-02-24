@@ -4,11 +4,45 @@ import AppKit
 struct ContentView: View {
     @StateObject private var gameState = GameState()
     @StateObject private var analyzer = MoveAnalyzer()
+    @State private var showingStartScreen = true
+    @State private var setupDifficulty: AIEngine.Difficulty = .medium
+    @State private var setupAIColor: PieceColor = .black
 
     private let cellSize: CGFloat = 58
     private let padding: CGFloat = 36
 
     var body: some View {
+        Group {
+            if showingStartScreen {
+                startScreen
+            } else {
+                gameScreen
+            }
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .toolbar {
+            ToolbarItemGroup {
+                if !showingStartScreen {
+                    Button(action: { gameState.isBoardFlipped.toggle() }) {
+                        Image(systemName: "arrow.up.arrow.down")
+                    }
+                    .help("翻转棋盘 (F)")
+                }
+            }
+        }
+        .onAppear {
+            setupAnalyzerCallbacks()
+            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                return handleKeyEvent(event) ? nil : event
+            }
+        }
+        .onChange(of: gameState.moveHistory.count) { _ in
+            SoundManager.playMoveSound()
+            analyzer.clearHints()
+        }
+    }
+
+    private var gameScreen: some View {
         HStack(spacing: 0) {
             // 左侧：棋盘
             GameBoardView(gameState: gameState, cellSize: cellSize, padding: padding,
@@ -28,26 +62,50 @@ struct ContentView: View {
             .frame(width: 220)
             .padding()
         }
-        .background(Color(nsColor: .windowBackgroundColor))
-        .toolbar {
-            ToolbarItemGroup {
-                Button(action: { gameState.isBoardFlipped.toggle() }) {
-                    Image(systemName: "arrow.up.arrow.down")
+    }
+
+    private var startScreen: some View {
+        VStack(spacing: 20) {
+            Text("中国象棋")
+                .font(.system(size: 32, weight: .bold, design: .serif))
+
+            Text("开始前设置 AI 对弈参数")
+                .foregroundColor(.secondary)
+
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("难度")
+                        .font(.headline)
+                    Picker("难度", selection: $setupDifficulty) {
+                        ForEach(AIEngine.Difficulty.allCases, id: \.self) { d in
+                            Text(d.rawValue).tag(d)
+                        }
+                    }
+                    .pickerStyle(.menu)
                 }
-                .help("翻转棋盘 (F)")
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("AI 执子")
+                        .font(.headline)
+                    Picker("AI 执子", selection: $setupAIColor) {
+                        Text("黑方").tag(PieceColor.black)
+                        Text("红方").tag(PieceColor.red)
+                    }
+                    .pickerStyle(.segmented)
+                }
             }
-        }
-        .onAppear {
-            setupAnalyzerCallbacks()
-            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                return handleKeyEvent(event) ? nil : event
+            .padding(18)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.08)))
+            .frame(width: 340)
+
+            Button("开始对局") {
+                startGameFromSetup()
             }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
         }
-        .onChange(of: gameState.moveHistory.count) { _ in
-            SoundManager.playMoveSound()
-            // 走子后清除提示
-            analyzer.clearHints()
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(24)
     }
 
     private func setupAnalyzerCallbacks() {
@@ -68,54 +126,36 @@ struct ContentView: View {
         }
     }
 
+    private func startGameFromSetup() {
+        analyzer.reset()
+        gameState.setAIDifficulty(setupDifficulty)
+        gameState.aiColor = setupAIColor
+        gameState.startNewGame()
+        showingStartScreen = false
+    }
+
+    private func returnToStartScreen() {
+        setupDifficulty = gameState.aiDifficulty
+        setupAIColor = gameState.aiColor
+        analyzer.reset()
+        gameState.setupInitialPosition()
+        showingStartScreen = true
+    }
+
     // MARK: - 对弈面板
 
     private var playPanel: some View {
-        let isConfigLocked = !gameState.moveHistory.isEmpty || gameState.isAIThinking || gameState.isInReview
-
         return VStack(alignment: .leading, spacing: 16) {
             Text("中国象棋")
                 .font(.title.bold())
 
-            // AI 设置
             VStack(alignment: .leading, spacing: 8) {
                 Text("AI 对弈")
                     .font(.headline)
-
-                HStack(spacing: 8) {
-                    Text("难度:")
-                        .font(.subheadline)
-                    Picker("", selection: Binding(
-                        get: { gameState.aiDifficulty },
-                        set: { gameState.setAIDifficulty($0) }
-                    )) {
-                        ForEach(AIEngine.Difficulty.allCases, id: \.self) { d in
-                            Text(d.rawValue).tag(d)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .disabled(isConfigLocked)
-                }
-
-                HStack(spacing: 8) {
-                    Text("AI 执:")
-                        .font(.subheadline)
-                    Picker("", selection: Binding(
-                        get: { gameState.aiColor },
-                        set: { gameState.setAIColor($0) }
-                    )) {
-                        Text("黑方").tag(PieceColor.black)
-                        Text("红方").tag(PieceColor.red)
-                    }
-                    .pickerStyle(.segmented)
-                    .disabled(isConfigLocked)
-                }
-
-                if isConfigLocked {
-                    Text("棋局开始后配置已锁定，点击“新对局”后可调整。")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                Text("难度：\(gameState.aiDifficulty.rawValue)")
+                    .font(.subheadline)
+                Text("AI 执：\(gameState.aiColor == .red ? "红方" : "黑方")")
+                    .font(.subheadline)
             }
 
             Divider()
@@ -196,10 +236,23 @@ struct ContentView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 4) {
                         ForEach(Array(gameState.moveHistory.enumerated()), id: \.offset) { index, move in
+                            let isRedMove = index % 2 == 0
                             HStack(spacing: 4) {
                                 Text("\(index + 1).")
                                     .foregroundColor(.secondary)
                                     .frame(width: 30, alignment: .trailing)
+                                Text(isRedMove ? "红" : "黑")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        Capsule().fill(
+                                            isRedMove
+                                            ? Color(red: 0.80, green: 0.10, blue: 0.10)
+                                            : Color(red: 0.15, green: 0.15, blue: 0.15)
+                                        )
+                                    )
                                 Text(moveDescription(move))
                                 Spacer()
                                 if index < analyzer.reviewAnalyses.count {
@@ -209,6 +262,13 @@ struct ContentView: View {
                                 }
                             }
                             .font(.system(.body, design: .monospaced))
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                gameState.rollbackToMove(index)
+                                analyzer.truncateToMoveCount(gameState.moveHistory.count)
+                                analyzer.clearHints()
+                            }
                             .id(index)
                         }
                     }
@@ -229,9 +289,8 @@ struct ContentView: View {
                 }
                 .disabled(gameState.moveHistory.isEmpty || gameState.isAIThinking)
 
-                Button("新对局") {
-                    gameState.startNewGame()
-                    analyzer.reset()
+                Button("开始页") {
+                    returnToStartScreen()
                 }
                 .disabled(gameState.isAIThinking)
             }

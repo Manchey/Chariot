@@ -147,6 +147,12 @@ class MoveAnalyzer: ObservableObject {
         hintMoves = []
     }
 
+    /// 对局回退后截断已有分析结果，避免与走法记录错位
+    func truncateToMoveCount(_ count: Int) {
+        reviewAnalyses = Array(reviewAnalyses.prefix(max(0, count)))
+        lastMoveGrade = reviewAnalyses.last?.grade
+    }
+
     /// 开始新对局时重置
     func reset() {
         lastMoveGrade = nil
