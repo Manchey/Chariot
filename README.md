@@ -20,12 +20,13 @@ A native macOS Chinese Chess (Xiangqi) application built with SwiftUI.
 
 ## Setup
 
-1. Clone the repository
-2. Download Pikafish engine files into `Xiangqi/Resources/`:
-   - `pikafish` — arm64 binary ([build from source](https://github.com/official-pikafish/Pikafish))
-   - `pikafish.nnue` — NNUE weights ([download from releases](https://github.com/official-pikafish/Pikafish/releases))
-3. Open `Xiangqi.xcodeproj` in Xcode
-4. Build and run
+```bash
+git clone <repo-url> && cd xiangqi
+./scripts/setup-engine.sh   # build Pikafish & download NNUE weights
+open Xiangqi.xcodeproj       # build and run in Xcode
+```
+
+The setup script will compile the Pikafish binary for Apple Silicon and download the NNUE weights (~50MB) into `Xiangqi/Resources/`.
 
 Without the engine files, the app falls back to the built-in minimax AI (depth 1-3).
 
