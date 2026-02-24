@@ -400,3 +400,12 @@ Expanded from 3 to 7 levels / 从 3 级扩展到 7 级：
 - **Noise reduction during test runs / 快测时减少干扰**
   - Skips move sound and move-analysis callbacks during fast-test mode to avoid slowing down mass move playback.
   - 快测模式下关闭走子音效与每步分析回调，避免拖慢测试过程。
+
+### Repetition draw (simplified) / 重复局面判和（简化版）
+
+- **Threefold repetition draw / 三次重复判和**
+  - Detects repeated full positions (including side to move). If the same position appears 3 times, the game is declared a draw.
+  - 检测完整局面（包含轮到哪方走）；同一局面出现 3 次即判和。
+- **UI draw result display / 和棋结果展示**
+  - Added draw result presentation (`和棋`) with reason text in the game-over panel.
+  - 在终局面板中显示和棋结果及原因说明。

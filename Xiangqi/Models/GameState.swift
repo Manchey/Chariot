@@ -9,6 +9,8 @@ class GameState: ObservableObject {
     @Published var isCheck: Bool = false
     @Published var isGameOver: Bool = false
     @Published var winner: PieceColor? = nil
+    @Published var isDraw: Bool = false
+    @Published var drawReason: String? = nil
     @Published var lastMoveFrom: Position? = nil
     @Published var lastMoveTo: Position? = nil
     @Published var isBoardFlipped: Bool = false
@@ -66,6 +68,8 @@ class GameState: ObservableObject {
         isCheck = false
         isGameOver = false
         winner = nil
+        isDraw = false
+        drawReason = nil
         lastMoveFrom = nil
         lastMoveTo = nil
         isAIThinking = false
@@ -173,6 +177,8 @@ class GameState: ObservableObject {
         if let captured = captured, captured.type == .king {
             isGameOver = true
             winner = movingPiece.color
+            isDraw = false
+            drawReason = nil
             isCheck = false
         } else {
             isCheck = isInCheck(currentTurn)
@@ -181,6 +187,14 @@ class GameState: ObservableObject {
             if isCheck && !hasAnyLegalMove(for: currentTurn) {
                 isGameOver = true
                 winner = movingPiece.color
+                isDraw = false
+                drawReason = nil
+            } else if currentPositionRepetitionCount() >= 3 {
+                isGameOver = true
+                winner = nil
+                isDraw = true
+                drawReason = "三次重复局面，判和"
+                isCheck = false
             } else {
                 // 如果轮到 AI，触发 AI 走棋
                 triggerAIMoveIfNeeded()
@@ -262,6 +276,8 @@ class GameState: ObservableObject {
         selectedPieceId = nil
         isGameOver = false
         winner = nil
+        isDraw = false
+        drawReason = nil
         isCheck = isInCheck(currentTurn)
 
         // 恢复上一步的高亮
@@ -287,6 +303,8 @@ class GameState: ObservableObject {
         selectedPieceId = nil
         isGameOver = false
         winner = nil
+        isDraw = false
+        drawReason = nil
         isCheck = false
         lastMoveFrom = nil
         lastMoveTo = nil
@@ -312,6 +330,8 @@ class GameState: ObservableObject {
             if let captured = captured, captured.type == .king {
                 isGameOver = true
                 winner = movingPiece.color
+                isDraw = false
+                drawReason = nil
                 break
             }
         }
@@ -663,5 +683,53 @@ class GameState: ObservableObject {
             }
         }
         return false
+    }
+
+    private func currentPositionRepetitionCount() -> Int {
+        var board = Self.standardPieces()
+        var turn: PieceColor = .red
+        var counts: [String: Int] = [:]
+
+        func key(for pieces: [Piece], turn: PieceColor) -> String {
+            let sorted = pieces.sorted {
+                if $0.position.row != $1.position.row { return $0.position.row < $1.position.row }
+                if $0.position.col != $1.position.col { return $0.position.col < $1.position.col }
+                if pieceTypeCode($0.type) != pieceTypeCode($1.type) { return pieceTypeCode($0.type) < pieceTypeCode($1.type) }
+                return ($0.color == .red ? 0 : 1) < ($1.color == .red ? 0 : 1)
+            }
+            let body = sorted.map { p in
+                "\(pieceColorCode(p.color))\(pieceTypeCode(p.type))@\(p.position.row),\(p.position.col)"
+            }.joined(separator: "|")
+            return "\(pieceColorCode(turn))#\(body)"
+        }
+
+        counts[key(for: board, turn: turn), default: 0] += 1
+
+        for move in moveHistory {
+            board.removeAll { $0.position == move.to }
+            if let idx = board.firstIndex(where: { $0.position == move.from }) {
+                board[idx].position = move.to
+            }
+            turn = (turn == .red) ? .black : .red
+            counts[key(for: board, turn: turn), default: 0] += 1
+        }
+
+        return counts[key(for: pieces, turn: currentTurn)] ?? 1
+    }
+
+    private func pieceTypeCode(_ type: PieceType) -> String {
+        switch type {
+        case .king: return "K"
+        case .advisor: return "A"
+        case .elephant: return "E"
+        case .horse: return "H"
+        case .chariot: return "R"
+        case .cannon: return "C"
+        case .pawn: return "P"
+        }
+    }
+
+    private func pieceColorCode(_ color: PieceColor) -> String {
+        color == .red ? "r" : "b"
     }
 }

@@ -221,15 +221,28 @@ struct ContentView: View {
                     .foregroundColor(.red)
             }
 
-            if gameState.isGameOver, let winner = gameState.winner {
+            if gameState.isGameOver {
                 VStack(spacing: 8) {
-                    Text(winner == .red ? "红方胜！" : "黑方胜！")
-                        .font(.title2.bold())
-                        .foregroundColor(winner == .red
-                                         ? Color(red: 0.80, green: 0.10, blue: 0.10)
-                                         : Color(red: 0.15, green: 0.15, blue: 0.15))
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.15)))
+                    if gameState.isDraw {
+                        Text("和棋")
+                            .font(.title2.bold())
+                            .foregroundColor(.secondary)
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.12)))
+                        if let reason = gameState.drawReason {
+                            Text(reason)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    } else if let winner = gameState.winner {
+                        Text(winner == .red ? "红方胜！" : "黑方胜！")
+                            .font(.title2.bold())
+                            .foregroundColor(winner == .red
+                                             ? Color(red: 0.80, green: 0.10, blue: 0.10)
+                                             : Color(red: 0.15, green: 0.15, blue: 0.15))
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.15)))
+                    }
 
                     Button("复盘") {
                         let moves = gameState.moveHistory.map { (piece: $0.piece, from: $0.from, to: $0.to, captured: $0.captured) }
