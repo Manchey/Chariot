@@ -159,8 +159,15 @@ class GameState: ObservableObject {
             isCheck = false
         } else {
             isCheck = isInCheck(currentTurn)
-            // 如果轮到 AI，触发 AI 走棋
-            triggerAIMoveIfNeeded()
+
+            // 将死：被将军方无任何合法应着，直接判负
+            if isCheck && !hasAnyLegalMove(for: currentTurn) {
+                isGameOver = true
+                winner = movingPiece.color
+            } else {
+                // 如果轮到 AI，触发 AI 走棋
+                triggerAIMoveIfNeeded()
+            }
         }
 
         // 分析回调（人类走子 & AI 走子都会触发）
@@ -369,7 +376,10 @@ class GameState: ObservableObject {
         case .cannon:   raw = cannonMoves(for: piece)
         case .pawn:     raw = pawnMoves(for: piece)
         }
-        return raw
+        return raw.filter { target in
+            let simulated = simulateMove(on: pieces, pieceID: piece.id, to: target)
+            return !isInCheck(piece.color, in: simulated)
+        }
     }
 
     private func isOccupiedByFriend(_ pos: Position, color: PieceColor) -> Bool {
@@ -515,12 +525,16 @@ class GameState: ObservableObject {
     // MARK: - 将军检测
 
     func isInCheck(_ color: PieceColor) -> Bool {
-        guard let king = pieces.first(where: { $0.type == .king && $0.color == color }) else {
+        isInCheck(color, in: pieces)
+    }
+
+    private func isInCheck(_ color: PieceColor, in boardPieces: [Piece]) -> Bool {
+        guard let king = boardPieces.first(where: { $0.type == .king && $0.color == color }) else {
             return false
         }
         let enemyColor: PieceColor = color == .red ? .black : .red
-        if isAttacked(king.position, by: enemyColor, in: pieces) { return true }
-        if kingsFacing(in: pieces) { return true }
+        if isAttacked(king.position, by: enemyColor, in: boardPieces) { return true }
+        if kingsFacing(in: boardPieces) { return true }
         return false
     }
 
@@ -612,5 +626,23 @@ class GameState: ObservableObject {
             }
         }
         return true
+    }
+
+    private func simulateMove(on boardPieces: [Piece], pieceID: UUID, to target: Position) -> [Piece] {
+        var simulated = boardPieces
+        simulated.removeAll { $0.position == target && $0.id != pieceID }
+        if let idx = simulated.firstIndex(where: { $0.id == pieceID }) {
+            simulated[idx].position = target
+        }
+        return simulated
+    }
+
+    private func hasAnyLegalMove(for color: PieceColor) -> Bool {
+        for piece in pieces where piece.color == color {
+            if !calculateValidMoves(for: piece).isEmpty {
+                return true
+            }
+        }
+        return false
     }
 }

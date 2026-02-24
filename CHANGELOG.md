@@ -379,3 +379,12 @@ Expanded from 3 to 7 levels / 从 3 级扩展到 7 级：
 - `dc3b6ab` Resume AI turn checks after undo and rollback
 - `341442a` Prefer chessdb cloud book for AI move and hints
 - `93befc9` Show hint candidate list and simplify move record labels
+
+### Rule correctness fixes / 规则正确性修复
+
+- **Must respond to check / 将军后必须应将**
+  - Legal move generation now filters out any move that leaves the moving side still in check (including flying-general exposure).
+  - 在合法走法阶段过滤“走后己方仍被将军/形成将帅照面”的着法。
+- **Checkmate auto-loss / 将死直接判负**
+  - After each move, if the side to move is in check and has no legal response, the game ends immediately and the attacker wins.
+  - 每步结束后若被将方处于将军状态且无任何合法应着，立即判负。
