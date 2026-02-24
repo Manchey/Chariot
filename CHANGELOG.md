@@ -2,40 +2,35 @@
 
 ## Project Overview / 项目概览
 
-A native macOS Xiangqi app built with SwiftUI. Features human-vs-AI gameplay, game record replay, endgame puzzles, and AI-assisted learning. Integrates the Pikafish engine (Stockfish port for Xiangqi, NNUE evaluation, Elo ~3954).
+A native macOS Xiangqi app built with SwiftUI, currently focused on AI-vs-human gameplay and lightweight review/hint assistance. Replay and endgame puzzle modules were removed from the active product path in the recent refactor. The app now uses Pikafish only (no minimax fallback at runtime).
 
-macOS 原生中国象棋应用，SwiftUI 构建，支持人机对弈、棋谱回放、残局练习、AI 辅助学习。集成 Pikafish 引擎（Stockfish 象棋移植版，NNUE 评估，Elo ~3954）。
+macOS 原生中国象棋应用，SwiftUI 构建，当前阶段聚焦 AI 对弈与轻量复盘/提示。近期重构已从主产品路径移除棋谱回放与残局模块。运行时仅使用 Pikafish（不再回退 minimax）。
 
 ## Project Structure / 项目结构
 
 ```
 Xiangqi/
 ├── XiangqiApp.swift              # App entry, AppDelegate manages engine lifecycle / 应用入口
-├── ContentView.swift             # Main UI: board + side panel / 主界面：棋盘 + 侧边面板
+├── ContentView.swift             # Setup screen + game screen + side panels / 开始页 + 对局页 + 侧边面板
 ├── Xiangqi.entitlements          # Entitlements (sandbox disabled) / 权限配置（沙盒已禁用）
 ├── Assets.xcassets/              # Asset catalog / 资源目录
 ├── Models/
 │   ├── Position.swift            # Board coordinate (row: 0-9, col: 0-8) / 棋盘坐标
 │   ├── Piece.swift               # Piece model (type, color, position) / 棋子模型
-│   ├── GameState.swift           # Game state management / 棋局状态管理
+│   ├── GameState.swift           # Game state, AI turns, review navigation / 棋局状态、AI 落子、复盘导航
 │   ├── FENParser.swift           # FEN string parsing / FEN 解析/生成
-│   ├── ChineseNotation.swift     # Chinese notation parser / 中文纵线记谱法解析
-│   ├── GameRecord.swift          # Game record model + PGN parser / 棋谱数据模型 + PGN 解析
-│   ├── Puzzle.swift              # Puzzle model + built-in puzzles / 残局题目模型 + 样例库
-│   ├── AIEngine.swift            # AI facade (UCI delegate + minimax fallback) / AI 引擎门面
+│   ├── AIEngine.swift            # Pikafish-only facade / Pikafish 门面层（仅 UCI）
 │   ├── MoveAnalyzer.swift        # Move analyzer (scoring, hints, review) / 走法分析器
 │   ├── ICCSNotation.swift        # ICCS coordinate conversion / ICCS 坐标转换
 │   └── UCIEngine.swift           # UCI protocol layer (Pikafish process) / UCI 协议通信层
 ├── Views/
-│   ├── BoardView.swift           # Board canvas rendering / 棋盘 Canvas 绘制
-│   ├── PieceView.swift           # Piece rendering + interaction / 棋子渲染 + 交互
-│   ├── ReplayControlView.swift   # Replay control panel / 棋谱回放面板
-│   ├── PuzzleView.swift          # Puzzle panel / 残局练习面板
+│   ├── BoardView.swift           # Board canvas + piece visuals (filename legacy) / 棋盘画布与棋子样式（文件名历史遗留）
+│   ├── PieceView.swift           # Game board composition + overlays (filename legacy) / 棋盘组合与覆盖层（文件名历史遗留）
 │   ├── EvaluationBarView.swift   # Position evaluation bar / 局面评估条
 │   └── ReviewPanelView.swift     # Post-game review panel / 对局复盘面板
 └── Resources/
-    ├── pikafish                  # Pikafish binary (arm64, 749KB)
-    └── pikafish.nnue             # NNUE weights (51.2MB) / NNUE 神经网络权重
+    ├── pikafish                  # Pikafish binary (arm64)
+    └── pikafish.nnue             # NNUE weights / NNUE 神经网络权重
 ```
 
 ---
@@ -292,3 +287,53 @@ Expanded from 3 to 7 levels / 从 3 级扩展到 7 级：
 `com.apple.security.app-sandbox` set to `false` in `Xiangqi.entitlements` to allow `Process` to execute the Pikafish binary.
 
 `Xiangqi.entitlements` 中沙盒设为 `false`，以允许 `Process` 执行 Pikafish 二进制。
+
+---
+
+## Phase 7: AI-Only Product Focus & UX Cleanup / 阶段七：聚焦 AI 对弈与界面收口
+
+**Date / 日期**: 2026-02-24
+
+### What changed (current product direction) / 当前产品方向调整
+
+- **AI-only gameplay focus / 聚焦 AI 对弈**
+  - Removed replay/puzzle features from the active UI flow and then from code/project references
+  - `GameState` simplified to AI play + review navigation
+  - Runtime AI path is now **Pikafish only** (minimax code removed)
+- **Unlimited hints / 提示无限量**
+  - Hint button no longer consumes per-game quota
+- **Two-screen flow / 双页面流程**
+  - Added setup screen (difficulty, AI side) before entering the board
+  - Gameplay screen no longer exposes mutable pre-game options after start
+
+### Interaction improvements / 交互与可读性优化
+
+- **Move history improvements / 走法记录优化**
+  - Red/Black moves are visually distinguished
+  - Click any move to rollback to that position and continue play (truncates following moves/analyses)
+  - Compact layout: two moves per row (Red + Black in one line)
+- **Board feedback improvements / 棋盘反馈优化**
+  - Last move highlight changed from bright glow to subtle corner markers on both origin/destination
+  - Hint moves rendered as arrows instead of source/target blocks
+  - Multiple hint arrows now use color intensity/line width to indicate recommendation strength
+
+### Stability fixes / 稳定性修复
+
+- **Pikafish pipe failure handling / Pikafish 管道写失败防崩**
+  - Guard command writes when engine process exits
+  - Stop waiting early if engine process is gone
+  - Prevent app termination from `Broken pipe` / `SIGPIPE` path in UCI writes
+
+### Performance tuning experiment (reverted) / 性能调优尝试（已回滚）
+
+- A dynamic `Threads/Hash` tuning change was tested (`a6e9859`) and then reverted (`693da3c`) due to high CPU usage without clear speedup.
+- 当前版本仍使用保守的默认引擎资源配置（固定 `Threads` / `Hash`）。
+
+### Stage commits / 阶段提交记录
+
+- `ca07db7` Use Pikafish only and remove hint limits
+- `1b93955` Focus app on AI play only
+- `b61bd7e` Add setup screen and move history navigation
+- `b7db06c` Refine hints and compact move history UI
+- `3f51992` Handle Pikafish pipe failures without crashing
+- `a6e9859` Tune Pikafish threads and hash by machine (**reverted by `693da3c`**)
