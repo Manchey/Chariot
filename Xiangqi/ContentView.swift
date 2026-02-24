@@ -213,14 +213,14 @@ struct ContentView: View {
 
             // 提示按钮
             if gameState.aiEnabled && !gameState.isGameOver && !gameState.isAIThinking {
-                Button("提示(\(analyzer.hintsRemaining))") {
+                Button("提示") {
                     let playerColor: PieceColor = gameState.aiColor == .red ? .black : .red
                     if gameState.currentTurn == playerColor {
                         analyzer.requestHint(pieces: gameState.pieces, for: playerColor)
                     }
                 }
                 .buttonStyle(.bordered)
-                .disabled(analyzer.hintsRemaining <= 0 || gameState.currentTurn == gameState.aiColor)
+                .disabled(gameState.currentTurn == gameState.aiColor)
             }
 
             Text("走法记录")

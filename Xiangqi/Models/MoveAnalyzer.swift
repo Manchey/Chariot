@@ -47,21 +47,16 @@ class MoveAnalyzer: ObservableObject {
     @Published var lastMoveGrade: MoveGrade? = nil
     @Published var evaluationScore: Int = 0
     @Published var hintMoves: [AIEngine.ScoredMove] = []
-    @Published var hintsRemaining: Int = 3
     @Published var reviewAnalyses: [MoveAnalysis] = []
     @Published var isAnalyzing: Bool = false
 
     private let engine = AIEngine()
 
-    /// 分析深度：Pikafish 可用时用更深的搜索
-    private var analysisDepth: Int {
-        AIEngine.isUCIEngineAvailable ? 14 : 4
-    }
+    /// 分析深度（Pikafish）
+    private var analysisDepth: Int { 14 }
 
-    /// 评估深度
-    private var evalDepth: Int {
-        AIEngine.isUCIEngineAvailable ? 10 : 3
-    }
+    /// 评估深度（Pikafish）
+    private var evalDepth: Int { 10 }
 
     /// 分析一步走法：比较最佳分与实际分
     func analyzeMove(
@@ -136,8 +131,6 @@ class MoveAnalyzer: ObservableObject {
 
     /// 请求提示走法
     func requestHint(pieces: [Piece], for color: PieceColor) {
-        guard hintsRemaining > 0 else { return }
-        hintsRemaining -= 1
         let engine = self.engine
         let depth = self.analysisDepth
 
@@ -159,7 +152,6 @@ class MoveAnalyzer: ObservableObject {
         lastMoveGrade = nil
         evaluationScore = 0
         hintMoves = []
-        hintsRemaining = 3
         reviewAnalyses = []
         isAnalyzing = false
     }
@@ -228,24 +220,13 @@ class MoveAnalyzer: ObservableObject {
     }
 
     private static func gradeFromDelta(_ delta: Int) -> MoveGrade {
-        if AIEngine.isUCIEngineAvailable {
-            // Pikafish 厘兵单位阈值
-            switch delta {
-            case 0...15:   return .brilliant
-            case 16...50:  return .good
-            case 51...100: return .dubious
-            case 101...300: return .mistake
-            default:       return .blunder
-            }
-        } else {
-            // minimax 内部分值阈值
-            switch delta {
-            case 0...10:   return .brilliant
-            case 11...80:  return .good
-            case 81...200: return .dubious
-            case 201...500: return .mistake
-            default:       return .blunder
-            }
+        // Pikafish 厘兵单位阈值
+        switch delta {
+        case 0...15:   return .brilliant
+        case 16...50:  return .good
+        case 51...100: return .dubious
+        case 101...300: return .mistake
+        default:       return .blunder
         }
     }
 }
