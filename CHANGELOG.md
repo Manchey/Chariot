@@ -337,3 +337,45 @@ Expanded from 3 to 7 levels / 从 3 级扩展到 7 级：
 - `b7db06c` Refine hints and compact move history UI
 - `3f51992` Handle Pikafish pipe failures without crashing
 - `a6e9859` Tune Pikafish threads and hash by machine (**reverted by `693da3c`**)
+
+---
+
+## Phase 7 Addendum: Stability & Cloud Book Integration / 阶段七补充：稳定性与云库接入
+
+**Date / 日期**: 2026-02-24
+
+### Stability and regression fixes / 稳定性与回归修复
+
+- **UCI startup regression fix / UCI 启动回归修复**
+  - Fixed a regression where startup handshake commands (`setoption`, `isready`) were blocked by an overly strict pipe-write guard, causing AI to stop moving.
+- **AI auto-move after state restore / 回退后 AI 自动续走**
+  - Unified AI turn triggering checks after `undo`, move-history rollback, and review exit.
+  - Prevents cases where the board correctly rolls back but AI does not resume despite it being AI's turn.
+
+### UI refinements / 界面微调
+
+- **Last-move highlight alignment fix / 上一步角框高亮对齐修复**
+  - Reworked corner marker drawing to use aligned overlays instead of negative-coordinate paths, fixing visible offset around pieces.
+- **Move record table polish / 走法记录表格优化**
+  - Red/Black labels moved to a table header row instead of repeating per move.
+
+### Cloud book integration (chessdb.cn) / 云库接入（chessdb.cn）
+
+- **Cloud-first AI move selection / AI 落子云库优先**
+  - `AIEngine.bestMove` now tries `chessdb.cn` cloud book (`querybest`) first.
+  - On miss/timeout/network failure, it falls back to local Pikafish search automatically.
+- **Cloud candidate hints / 云库候选提示**
+  - Hint requests now try cloud book candidates (`queryall`) first, then fall back to local Pikafish `topMoves`.
+  - Added short request timeout and in-memory cache to avoid blocking repeated positions.
+- **Hint candidate list UI / 提示候选列表 UI**
+  - Added a visible list of candidate moves and scores under the hint button.
+  - Shows source tag (`云库` / `本地`) so users can tell where the suggestions come from.
+
+### Additional stage commits / 补充阶段提交记录
+
+- `748c21d` Sync README with AI-only gameplay focus
+- `aa531be` Fix last-move corner highlight alignment
+- `ef4162c` Fix UCI startup commands blocked by pipe guard
+- `dc3b6ab` Resume AI turn checks after undo and rollback
+- `341442a` Prefer chessdb cloud book for AI move and hints
+- `93befc9` Show hint candidate list and simplify move record labels
