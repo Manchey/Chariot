@@ -135,7 +135,10 @@ class MoveAnalyzer: ObservableObject {
         let depth = self.analysisDepth
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let moves = engine.topMoves(pieces: pieces, for: color, count: 3, depth: depth)
+            let cloudMoves = engine.cloudHintMoves(pieces: pieces, for: color, count: 3)
+            let moves = cloudMoves.isEmpty
+                ? engine.topMoves(pieces: pieces, for: color, count: 3, depth: depth)
+                : cloudMoves
             DispatchQueue.main.async {
                 self?.hintMoves = moves
             }
