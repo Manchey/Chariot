@@ -14,46 +14,15 @@ struct ContentView: View {
             GameBoardView(gameState: gameState, cellSize: cellSize, padding: padding,
                           hintMoves: analyzer.hintMoves)
 
-            // 评估条（仅对弈模式显示）
-            if gameState.mode == .play {
-                EvaluationBarView(score: analyzer.evaluationScore)
-                    .padding(.vertical, padding)
-            }
+            EvaluationBarView(score: analyzer.evaluationScore)
+                .padding(.vertical, padding)
 
             // 右侧：面板
             VStack(alignment: .leading, spacing: 12) {
-                // 模式切换
-                Picker("模式", selection: $gameState.mode) {
-                    Text("对弈").tag(GameMode.play)
-                    Text("棋谱").tag(GameMode.replay)
-                    Text("残局").tag(GameMode.puzzle)
-                }
-                .pickerStyle(.segmented)
-                .disabled(gameState.isInReview)
-                .onChange(of: gameState.mode) { newMode in
-                    if newMode == .play {
-                        gameState.switchToPlayMode()
-                        analyzer.reset()
-                    } else if newMode == .replay {
-                        if gameState.record == nil {
-                            gameState.loadRecord(SampleGames.all[0])
-                        }
-                    } else if newMode == .puzzle {
-                        if gameState.puzzle == nil {
-                            gameState.loadPuzzle(SamplePuzzles.all[0])
-                        }
-                    }
-                }
-
-                // 根据模式显示不同面板
                 if gameState.isInReview {
                     ReviewPanelView(gameState: gameState, analyzer: analyzer)
-                } else if gameState.mode == .play {
-                    playPanel
-                } else if gameState.mode == .replay {
-                    ReplayPanelView(gameState: gameState)
                 } else {
-                    PuzzlePanelView(gameState: gameState)
+                    playPanel
                 }
             }
             .frame(width: 220)
@@ -66,11 +35,6 @@ struct ContentView: View {
                     Image(systemName: "arrow.up.arrow.down")
                 }
                 .help("翻转棋盘 (F)")
-
-                Button(action: openPGNFile) {
-                    Image(systemName: "doc.text")
-                }
-                .help("导入棋谱 (Cmd+O)")
             }
         }
         .onAppear {
@@ -83,11 +47,6 @@ struct ContentView: View {
             SoundManager.playMoveSound()
             // 走子后清除提示
             analyzer.clearHints()
-        }
-        .onChange(of: gameState.replayIndex) { _ in
-            if gameState.mode == .replay {
-                SoundManager.playMoveSound()
-            }
         }
     }
 
@@ -112,43 +71,50 @@ struct ContentView: View {
     // MARK: - 对弈面板
 
     private var playPanel: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let isConfigLocked = !gameState.moveHistory.isEmpty || gameState.isAIThinking || gameState.isInReview
+
+        return VStack(alignment: .leading, spacing: 16) {
             Text("中国象棋")
                 .font(.title.bold())
 
             // AI 设置
             VStack(alignment: .leading, spacing: 8) {
-                Toggle(isOn: Binding(
-                    get: { gameState.aiEnabled },
-                    set: { _ in gameState.toggleAI() }
-                )) {
-                    Text("AI 对弈")
+                Text("AI 对弈")
+                    .font(.headline)
+
+                HStack(spacing: 8) {
+                    Text("难度:")
+                        .font(.subheadline)
+                    Picker("", selection: Binding(
+                        get: { gameState.aiDifficulty },
+                        set: { gameState.setAIDifficulty($0) }
+                    )) {
+                        ForEach(AIEngine.Difficulty.allCases, id: \.self) { d in
+                            Text(d.rawValue).tag(d)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .disabled(isConfigLocked)
                 }
 
-                if gameState.aiEnabled {
-                    HStack(spacing: 8) {
-                        Text("难度:")
-                            .font(.subheadline)
-                        Picker("", selection: Binding(
-                            get: { gameState.aiDifficulty },
-                            set: { gameState.setAIDifficulty($0) }
-                        )) {
-                            ForEach(AIEngine.Difficulty.allCases, id: \.self) { d in
-                                Text(d.rawValue).tag(d)
-                            }
-                        }
-                        .pickerStyle(.menu)
+                HStack(spacing: 8) {
+                    Text("AI 执:")
+                        .font(.subheadline)
+                    Picker("", selection: Binding(
+                        get: { gameState.aiColor },
+                        set: { gameState.setAIColor($0) }
+                    )) {
+                        Text("黑方").tag(PieceColor.black)
+                        Text("红方").tag(PieceColor.red)
                     }
+                    .pickerStyle(.segmented)
+                    .disabled(isConfigLocked)
+                }
 
-                    HStack(spacing: 8) {
-                        Text("AI 执:")
-                            .font(.subheadline)
-                        Picker("", selection: $gameState.aiColor) {
-                            Text("黑方").tag(PieceColor.black)
-                            Text("红方").tag(PieceColor.red)
-                        }
-                        .pickerStyle(.segmented)
-                    }
+                if isConfigLocked {
+                    Text("棋局开始后配置已锁定，点击“新对局”后可调整。")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
 
@@ -212,7 +178,7 @@ struct ContentView: View {
             Divider()
 
             // 提示按钮
-            if gameState.aiEnabled && !gameState.isGameOver && !gameState.isAIThinking {
+            if !gameState.isGameOver && !gameState.isAIThinking {
                 Button("提示") {
                     let playerColor: PieceColor = gameState.aiColor == .red ? .black : .red
                     if gameState.currentTurn == playerColor {
@@ -317,45 +283,14 @@ struct ContentView: View {
     // MARK: - 键盘快捷键
 
     private func handleKeyEvent(_ event: NSEvent) -> Bool {
-        // Cmd+O: 导入棋谱
-        if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "o" {
-            openPGNFile()
-            return true
-        }
-
         switch event.keyCode {
         case 3:  // F 键 — 翻转棋盘
             if !event.modifierFlags.contains(.command) {
                 gameState.isBoardFlipped.toggle()
                 return true
             }
-        case 123: // 左箭头 — 上一步
-            if gameState.mode == .replay {
-                gameState.replayPrevious()
-                return true
-            }
-        case 124: // 右箭头 — 下一步
-            if gameState.mode == .replay {
-                gameState.replayNext()
-                return true
-            }
-        case 115: // Home — 回到开始
-            if gameState.mode == .replay {
-                gameState.replayFirst()
-                return true
-            }
-        case 119: // End — 跳到最后
-            if gameState.mode == .replay {
-                gameState.replayLast()
-                return true
-            }
-        case 49:  // 空格 — 自动播放/暂停
-            if gameState.mode == .replay {
-                gameState.toggleAutoPlay()
-                return true
-            }
         case 6:   // Z 键 — 悔棋（对弈模式）
-            if event.modifierFlags.contains(.command) && gameState.mode == .play {
+            if event.modifierFlags.contains(.command) {
                 gameState.undoMove()
                 return true
             }
@@ -363,26 +298,6 @@ struct ContentView: View {
             break
         }
         return false
-    }
-
-    // MARK: - PGN 文件导入
-
-    private func openPGNFile() {
-        let panel = NSOpenPanel()
-        panel.title = "选择棋谱文件"
-        panel.allowedContentTypes = [.plainText]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-
-        panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
-            guard let content = try? String(contentsOf: url, encoding: .utf8) else { return }
-            if let record = PGNParser.parse(content) {
-                DispatchQueue.main.async {
-                    gameState.loadRecord(record)
-                }
-            }
-        }
     }
 }
 

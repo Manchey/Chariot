@@ -1,12 +1,6 @@
 import SwiftUI
 
-enum GameMode {
-    case play
-    case replay
-    case puzzle
-}
-
-/// 管理棋局状态：棋子、选中、走子、规则校验、棋谱回放
+/// 管理棋局状态：棋子、选中、走子、规则校验、AI 对弈与复盘
 class GameState: ObservableObject {
     // MARK: - 通用状态
     @Published var pieces: [Piece] = []
@@ -15,14 +9,13 @@ class GameState: ObservableObject {
     @Published var isCheck: Bool = false
     @Published var isGameOver: Bool = false
     @Published var winner: PieceColor? = nil
-    @Published var mode: GameMode = .play
     @Published var lastMoveFrom: Position? = nil
     @Published var lastMoveTo: Position? = nil
     @Published var isBoardFlipped: Bool = false
 
     // MARK: - 对弈模式状态
     @Published var moveHistory: [Move] = []
-    @Published var aiEnabled: Bool = false
+    @Published var aiEnabled: Bool = true
     @Published var aiColor: PieceColor = .black
     @Published var aiDifficulty: AIEngine.Difficulty = .medium
     @Published var isAIThinking: Bool = false
@@ -34,15 +27,6 @@ class GameState: ObservableObject {
         let to: Position
         let captured: Piece?
     }
-
-    // MARK: - 回放模式状态
-    @Published var record: GameRecord? = nil
-    @Published var replayMoves: [(notation: String, from: Position, to: Position)] = []
-    @Published var replayIndex: Int = -1  // -1 = 初始局面
-    @Published var isAutoPlaying: Bool = false
-    private var autoPlayTimer: Timer?
-    private var replayInitialPieces: [Piece] = []
-    private var replayInitialTurn: PieceColor = .red
 
     // MARK: - 分析回调
     var analyzeCallback: ((_ piecesBefore: [Piece], _ piecesAfter: [Piece],
@@ -57,23 +41,9 @@ class GameState: ObservableObject {
     private var reviewSavedPieces: [Piece] = []
     private var reviewSavedTurn: PieceColor = .red
 
-    // MARK: - 残局练习状态
-    @Published var puzzle: Puzzle? = nil
-    @Published var puzzleStepIndex: Int = 0       // 当前应走第几步
-    @Published var puzzleStatus: PuzzleStatus = .playing
-    @Published var showHint: Bool = false
-    private var puzzleInitialPieces: [Piece] = []
-
-    /// 当前步的注释
-    var currentComment: String? {
-        guard mode == .replay, let record = record else { return nil }
-        return record.comments[replayIndex]
-    }
-
-    /// 当前选中棋子的合法走法（对弈模式和残局练习模式）
+    /// 当前选中棋子的合法走法（对弈模式）
     var validMoves: [Position] {
-        guard mode == .play || mode == .puzzle,
-              let id = selectedPieceId,
+        guard let id = selectedPieceId,
               let piece = pieces.first(where: { $0.id == id }) else {
             return []
         }
@@ -132,17 +102,6 @@ class GameState: ObservableObject {
         return pieces
     }
 
-    // MARK: - 模式切换
-
-    func switchToPlayMode() {
-        stopAutoPlay()
-        mode = .play
-        record = nil
-        replayMoves = []
-        replayIndex = -1
-        setupInitialPosition()
-    }
-
     // MARK: - 对弈交互
 
     func piece(at position: Position) -> Piece? {
@@ -150,11 +109,7 @@ class GameState: ObservableObject {
     }
 
     func selectOrMove(at position: Position) {
-        if mode == .puzzle {
-            puzzleSelectOrMove(at: position)
-            return
-        }
-        guard mode == .play, !isGameOver, !isAIThinking else { return }
+        guard !isGameOver, !isAIThinking, !isInReview else { return }
         // AI 回合时不允许人类操作
         if aiEnabled && currentTurn == aiColor { return }
         if let selectedId = selectedPieceId {
@@ -221,9 +176,16 @@ class GameState: ObservableObject {
         aiEngine = AIEngine(difficulty: difficulty)
     }
 
+    func setAIColor(_ color: PieceColor) {
+        aiColor = color
+        if aiEnabled && currentTurn == aiColor && !isGameOver && !isAIThinking {
+            triggerAIMove()
+        }
+    }
+
     func toggleAI() {
         aiEnabled.toggle()
-        if aiEnabled && mode == .play && currentTurn == aiColor && !isGameOver {
+        if aiEnabled && currentTurn == aiColor && !isGameOver {
             triggerAIMove()
         }
     }
@@ -238,7 +200,7 @@ class GameState: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = engine.bestMove(pieces: currentPieces, for: color)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                guard let self = self, self.aiEnabled, self.mode == .play, !self.isGameOver else {
+                guard let self = self, self.aiEnabled, !self.isGameOver else {
                     self?.isAIThinking = false
                     return
                 }
@@ -256,7 +218,7 @@ class GameState: ObservableObject {
     }
 
     func undoMove() {
-        guard mode == .play, !isAIThinking else { return }
+        guard !isAIThinking, !isInReview else { return }
 
         // AI 模式下悔棋需要撤回两步（AI 的走法 + 人的走法）
         let stepsToUndo = (aiEnabled && moveHistory.count >= 2) ? 2 : 1
@@ -290,7 +252,7 @@ class GameState: ObservableObject {
     // MARK: - 复盘模式
 
     func startReview() {
-        guard mode == .play, isGameOver, !moveHistory.isEmpty else { return }
+        guard isGameOver, !moveHistory.isEmpty else { return }
         isInReview = true
         reviewIndex = 0
         reviewSavedPieces = pieces
@@ -344,241 +306,6 @@ class GameState: ObservableObject {
             lastMoveTo = last.to
         }
         selectedPieceId = nil
-    }
-
-    // MARK: - 棋谱加载与回放
-
-    func loadRecord(_ record: GameRecord) {
-        stopAutoPlay()
-        self.record = record
-        self.mode = .replay
-
-        // 解析初始局面
-        if let fen = record.initialFEN, let result = FENParser.parse(fen) {
-            replayInitialPieces = result.pieces
-            replayInitialTurn = result.turn
-        } else {
-            replayInitialPieces = Self.standardPieces()
-            replayInitialTurn = .red
-        }
-
-        // 逐步解析所有走法
-        replayMoves = []
-        var currentPieces = replayInitialPieces
-        var turn = replayInitialTurn
-
-        for notation in record.moveNotations {
-            if let parsed = ChineseNotation.parse(notation, pieces: currentPieces, turn: turn) {
-                replayMoves.append((notation, parsed.from, parsed.to))
-                // 应用走法以便解析下一步
-                currentPieces.removeAll { $0.position == parsed.to }
-                if let idx = currentPieces.firstIndex(where: { $0.position == parsed.from }) {
-                    currentPieces[idx].position = parsed.to
-                }
-                turn = (turn == .red) ? .black : .red
-            } else {
-                break  // 解析失败则停止
-            }
-        }
-
-        // 显示初始局面
-        replayGoTo(-1)
-    }
-
-    func replayGoTo(_ index: Int) {
-        guard mode == .replay else { return }
-        stopAutoPlay()
-        let target = max(-1, min(index, replayMoves.count - 1))
-        replayIndex = target
-
-        // 从初始局面重建到目标步数
-        pieces = replayInitialPieces
-        currentTurn = replayInitialTurn
-
-        if target >= 0 {
-            for i in 0...target {
-                let move = replayMoves[i]
-                pieces.removeAll { $0.position == move.to }
-                if let idx = pieces.firstIndex(where: { $0.position == move.from }) {
-                    pieces[idx].position = move.to
-                }
-                currentTurn = (currentTurn == .red) ? .black : .red
-            }
-            lastMoveFrom = replayMoves[target].from
-            lastMoveTo = replayMoves[target].to
-        } else {
-            lastMoveFrom = nil
-            lastMoveTo = nil
-        }
-
-        isCheck = isInCheck(currentTurn)
-        selectedPieceId = nil
-        isGameOver = false
-        winner = nil
-    }
-
-    func replayNext() {
-        guard mode == .replay, replayIndex < replayMoves.count - 1 else {
-            stopAutoPlay()
-            return
-        }
-        replayGoToAnimated(replayIndex + 1)
-    }
-
-    func replayPrevious() {
-        guard mode == .replay, replayIndex >= 0 else { return }
-        replayGoToAnimated(replayIndex - 1)
-    }
-
-    func replayFirst() {
-        replayGoToAnimated(-1)
-    }
-
-    func replayLast() {
-        replayGoToAnimated(replayMoves.count - 1)
-    }
-
-    private func replayGoToAnimated(_ index: Int) {
-        withAnimation(.easeInOut(duration: 0.25)) {
-            replayGoTo(index)
-        }
-    }
-
-    // MARK: 自动播放
-
-    func toggleAutoPlay() {
-        if isAutoPlaying {
-            stopAutoPlay()
-        } else {
-            startAutoPlay()
-        }
-    }
-
-    private func startAutoPlay() {
-        guard replayIndex < replayMoves.count - 1 else { return }
-        isAutoPlaying = true
-        autoPlayTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.replayNext()
-            }
-        }
-    }
-
-    func stopAutoPlay() {
-        isAutoPlaying = false
-        autoPlayTimer?.invalidate()
-        autoPlayTimer = nil
-    }
-
-    // MARK: - 残局练习
-
-    func loadPuzzle(_ puzzle: Puzzle) {
-        stopAutoPlay()
-        self.puzzle = puzzle
-        self.mode = .puzzle
-        self.puzzleStepIndex = 0
-        self.puzzleStatus = .playing
-        self.showHint = false
-        self.record = nil
-        self.replayMoves = []
-        self.replayIndex = -1
-        self.moveHistory = []
-
-        if let result = FENParser.parse(puzzle.fen) {
-            pieces = result.pieces
-            currentTurn = result.turn
-        } else {
-            pieces = Self.standardPieces()
-            currentTurn = .red
-        }
-        puzzleInitialPieces = pieces
-        selectedPieceId = nil
-        isCheck = false
-        isGameOver = false
-        winner = nil
-        lastMoveFrom = nil
-        lastMoveTo = nil
-    }
-
-    func loadNextPuzzle() {
-        guard let current = puzzle else { return }
-        let all = SamplePuzzles.all
-        if let idx = all.firstIndex(where: { $0.title == current.title }),
-           idx + 1 < all.count {
-            loadPuzzle(all[idx + 1])
-        } else {
-            loadPuzzle(all[0])
-        }
-    }
-
-    func puzzleSelectOrMove(at position: Position) {
-        guard mode == .puzzle, puzzleStatus == .playing else { return }
-        let playerColor = puzzle?.playerColor ?? .red
-
-        if let selectedId = selectedPieceId {
-            if validMoves.contains(position) {
-                // 检查是否符合正解
-                guard let puzzle = puzzle, puzzleStepIndex < puzzle.solution.count else { return }
-                let step = puzzle.solution[puzzleStepIndex]
-
-                guard let movingPiece = pieces.first(where: { $0.id == selectedId }) else { return }
-
-                if movingPiece.position == step.playerFrom && position == step.playerTo {
-                    // 正确走法
-                    applyMove(from: step.playerFrom, to: step.playerTo)
-
-                    // 检查是否有对方应着
-                    if let oppFrom = step.opponentFrom, let oppTo = step.opponentTo {
-                        // 延迟执行对方应着
-                        puzzleStepIndex += 1
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                            self?.applyMove(from: oppFrom, to: oppTo)
-                            // 检查是否已完成所有步骤
-                            if self?.puzzleStepIndex ?? 0 >= (self?.puzzle?.solution.count ?? 0) {
-                                self?.puzzleStatus = .solved
-                            }
-                        }
-                    } else {
-                        // 没有对方应着，这步完成即为解题成功
-                        puzzleStepIndex += 1
-                        puzzleStatus = .solved
-                    }
-                } else {
-                    // 走法不对
-                    puzzleStatus = .wrong
-                    // 1秒后恢复为playing，让用户重试
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                        guard self?.puzzleStatus == .wrong else { return }
-                        self?.puzzleStatus = .playing
-                    }
-                    selectedPieceId = nil
-                }
-            } else if let tapped = piece(at: position), tapped.color == playerColor {
-                selectedPieceId = tapped.id
-            } else {
-                selectedPieceId = nil
-            }
-        } else {
-            if let tapped = piece(at: position), tapped.color == playerColor {
-                selectedPieceId = tapped.id
-            }
-        }
-    }
-
-    /// 在棋盘上执行一步走法（不做规则检查，用于回放和残局）
-    private func applyMove(from: Position, to: Position) {
-        let captured = piece(at: to)
-        if let captured = captured {
-            pieces.removeAll { $0.id == captured.id }
-        }
-        if let idx = pieces.firstIndex(where: { $0.position == from }) {
-            pieces[idx].position = to
-        }
-        currentTurn = (currentTurn == .red) ? .black : .red
-        selectedPieceId = nil
-        lastMoveFrom = from
-        lastMoveTo = to
-        isCheck = isInCheck(currentTurn)
     }
 
     // MARK: - 走子规则
