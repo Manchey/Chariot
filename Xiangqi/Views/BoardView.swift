@@ -91,7 +91,6 @@ struct BoardCanvasView: View {
 struct PieceView: View {
     let piece: Piece
     let isSelected: Bool
-    var isLastMoved: Bool = false
     let size: CGFloat
     var isFlipped: Bool = false
 
@@ -123,14 +122,6 @@ struct PieceView: View {
                 .frame(width: size + 4, height: size + 4)
                 .opacity(isSelected ? 1 : 0)
         )
-        .overlay(
-            Circle()
-                .stroke(Color.cyan.opacity(0.9), lineWidth: 3)
-                .frame(width: size + 10, height: size + 10)
-                .opacity(isLastMoved ? 1 : 0)
-        )
-        .shadow(color: isLastMoved ? Color.cyan.opacity(0.35) : .clear,
-                radius: isLastMoved ? 10 : 0)
         .rotationEffect(isFlipped ? .degrees(180) : .zero)
     }
 }

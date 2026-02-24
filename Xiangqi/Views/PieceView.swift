@@ -20,10 +20,10 @@ struct GameBoardView: View {
 
             // 上一步走法高亮
             if let from = gameState.lastMoveFrom {
-                lastMoveMarker.position(pointFor(from))
+                moveCornerMarker.position(pointFor(from))
             }
             if let to = gameState.lastMoveTo {
-                lastMoveMarker.position(pointFor(to))
+                moveCornerMarker.position(pointFor(to))
             }
 
             hintArrowsLayer
@@ -49,7 +49,6 @@ struct GameBoardView: View {
             ForEach(gameState.pieces) { piece in
                 PieceView(piece: piece,
                           isSelected: piece.id == gameState.selectedPieceId,
-                          isLastMoved: piece.position == gameState.lastMoveTo,
                           size: pieceSize,
                           isFlipped: gameState.isBoardFlipped)
                     .position(pointFor(piece.position))
@@ -67,11 +66,14 @@ struct GameBoardView: View {
         }
     }
 
-    /// 上一步走子的半透明方形标记
-    private var lastMoveMarker: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(Color.yellow.opacity(0.35))
-            .frame(width: cellSize * 0.7, height: cellSize * 0.7)
+    /// 上一步走子位置的低调四角标记
+    private var moveCornerMarker: some View {
+        ZStack {
+            ForEach(0..<4, id: \.self) { corner in
+                cornerLShape(corner)
+            }
+        }
+        .frame(width: cellSize * 0.78, height: cellSize * 0.78)
     }
 
     private var hintArrowsLayer: some View {
@@ -79,7 +81,9 @@ struct GameBoardView: View {
             for (index, hint) in hintMoves.enumerated() {
                 let from = pointFor(hint.from)
                 let to = pointFor(hint.to)
-                let arrowColor = Color.blue.opacity(0.85)
+                let strength: CGFloat = [1.0, 0.7, 0.45][min(index, 2)]
+                let arrowColor = Color.blue.opacity(0.9 * strength)
+                let lineWidth: CGFloat = [3.6, 2.8, 2.2][min(index, 2)]
 
                 let dx = to.x - from.x
                 let dy = to.y - from.y
@@ -95,7 +99,7 @@ struct GameBoardView: View {
                 line.move(to: start)
                 line.addLine(to: end)
                 context.stroke(line, with: .color(arrowColor),
-                               style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                               style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
 
                 let headLength = cellSize * 0.22
                 let headWidth = cellSize * 0.14
@@ -118,7 +122,7 @@ struct GameBoardView: View {
                                        y: labelCenter.y - cellSize * 0.14,
                                        width: cellSize * 0.28,
                                        height: cellSize * 0.28)
-                context.fill(Path(ellipseIn: labelRect), with: .color(Color.blue.opacity(0.22)))
+                context.fill(Path(ellipseIn: labelRect), with: .color(Color.blue.opacity(0.18 * strength)))
                 context.stroke(Path(ellipseIn: labelRect), with: .color(arrowColor), lineWidth: 2)
                 context.draw(
                     Text("\(index + 1)")
@@ -137,6 +141,35 @@ struct GameBoardView: View {
     private func pointFor(_ pos: Position) -> CGPoint {
         CGPoint(x: padding + CGFloat(pos.col) * cellSize,
                 y: padding + CGFloat(pos.row) * cellSize)
+    }
+
+    private func cornerLShape(_ corner: Int) -> some View {
+        let markerSize = cellSize * 0.78
+        let inset = markerSize / 2
+        let arm = cellSize * 0.18
+        let color = Color(red: 0.18, green: 0.45, blue: 0.55).opacity(0.65)
+
+        return Path { path in
+            switch corner {
+            case 0:
+                path.move(to: CGPoint(x: -inset, y: -inset + arm))
+                path.addLine(to: CGPoint(x: -inset, y: -inset))
+                path.addLine(to: CGPoint(x: -inset + arm, y: -inset))
+            case 1:
+                path.move(to: CGPoint(x: inset - arm, y: -inset))
+                path.addLine(to: CGPoint(x: inset, y: -inset))
+                path.addLine(to: CGPoint(x: inset, y: -inset + arm))
+            case 2:
+                path.move(to: CGPoint(x: inset, y: inset - arm))
+                path.addLine(to: CGPoint(x: inset, y: inset))
+                path.addLine(to: CGPoint(x: inset - arm, y: inset))
+            default:
+                path.move(to: CGPoint(x: -inset + arm, y: inset))
+                path.addLine(to: CGPoint(x: -inset, y: inset))
+                path.addLine(to: CGPoint(x: -inset, y: inset - arm))
+            }
+        }
+        .stroke(color, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
     }
 
     /// 翻转时将点击坐标转换回正常坐标

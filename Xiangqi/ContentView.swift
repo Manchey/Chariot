@@ -234,49 +234,24 @@ struct ContentView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 4) {
-                        ForEach(Array(gameState.moveHistory.enumerated()), id: \.offset) { index, move in
-                            let isRedMove = index % 2 == 0
-                            HStack(spacing: 4) {
-                                Text("\(index + 1).")
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(movePairs, id: \.turn) { pair in
+                            HStack(spacing: 6) {
+                                Text("\(pair.turn).")
                                     .foregroundColor(.secondary)
-                                    .frame(width: 30, alignment: .trailing)
-                                Text(isRedMove ? "红" : "黑")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(
-                                        Capsule().fill(
-                                            isRedMove
-                                            ? Color(red: 0.80, green: 0.10, blue: 0.10)
-                                            : Color(red: 0.15, green: 0.15, blue: 0.15)
-                                        )
-                                    )
-                                Text(moveDescription(move))
-                                Spacer()
-                                if index < analyzer.reviewAnalyses.count {
-                                    Text(analyzer.reviewAnalyses[index].grade.symbol)
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                        .foregroundColor(gradeTextColor(analyzer.reviewAnalyses[index].grade))
-                                }
+                                    .frame(width: 24, alignment: .trailing)
+
+                                moveRecordCell(index: pair.redIndex, move: pair.redMove, isRed: true)
+                                moveRecordCell(index: pair.blackIndex, move: pair.blackMove, isRed: false)
                             }
-                            .font(.system(.body, design: .monospaced))
-                            .padding(.vertical, 2)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                gameState.rollbackToMove(index)
-                                analyzer.truncateToMoveCount(gameState.moveHistory.count)
-                                analyzer.clearHints()
-                            }
-                            .id(index)
+                            .id(pair.turn)
                         }
                     }
                     .padding(.horizontal, 4)
                 }
                 .onChange(of: gameState.moveHistory.count) { _ in
                     if let last = gameState.moveHistory.indices.last {
-                        proxy.scrollTo(last, anchor: .bottom)
+                        proxy.scrollTo((last / 2) + 1, anchor: .bottom)
                     }
                 }
             }
@@ -337,6 +312,70 @@ struct ContentView: View {
         let to = "(\(move.to.col),\(move.to.row))"
         let capture = move.captured != nil ? "吃\(move.captured!.displayName)" : ""
         return "\(name) \(from)\u{2192}\(to) \(capture)"
+    }
+
+    private struct MovePair {
+        let turn: Int
+        let redIndex: Int
+        let redMove: GameState.Move
+        let blackIndex: Int?
+        let blackMove: GameState.Move?
+    }
+
+    private var movePairs: [MovePair] {
+        let moves = gameState.moveHistory
+        var pairs: [MovePair] = []
+        var i = 0
+        var turn = 1
+        while i < moves.count {
+            let red = moves[i]
+            let blackIndex = (i + 1 < moves.count) ? i + 1 : nil
+            let blackMove = (i + 1 < moves.count) ? moves[i + 1] : nil
+            pairs.append(MovePair(turn: turn, redIndex: i, redMove: red, blackIndex: blackIndex, blackMove: blackMove))
+            i += 2
+            turn += 1
+        }
+        return pairs
+    }
+
+    @ViewBuilder
+    private func moveRecordCell(index: Int?, move: GameState.Move?, isRed: Bool) -> some View {
+        if let index = index, let move = move {
+            HStack(spacing: 4) {
+                Text(isRed ? "红" : "黑")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(isRed ? Color.red : Color.black.opacity(0.85)))
+
+                Text(moveDescription(move))
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                if index < analyzer.reviewAnalyses.count {
+                    Text(analyzer.reviewAnalyses[index].grade.symbol)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(gradeTextColor(analyzer.reviewAnalyses[index].grade))
+                }
+            }
+            .font(.system(size: 12, design: .monospaced))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 5).fill(Color.gray.opacity(0.06)))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                gameState.rollbackToMove(index)
+                analyzer.truncateToMoveCount(gameState.moveHistory.count)
+                analyzer.clearHints()
+            }
+        } else {
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.clear)
+                .frame(maxWidth: .infinity, minHeight: 28)
+        }
     }
 
     // MARK: - 键盘快捷键
