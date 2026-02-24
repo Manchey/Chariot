@@ -1,11 +1,8 @@
 # Xcode
 build/
 DerivedData/
-*.xcuserdata
-*.xcworkspace
-!*.xcworkspace/contents.xcworkspacedata
 xcuserdata/
-*.moved-aside
+*.xcuserdata
 *.pbxuser
 !default.pbxuser
 *.mode1v3
@@ -14,6 +11,9 @@ xcuserdata/
 !default.mode2v3
 *.perspectivev3
 !default.perspectivev3
+*.moved-aside
+*.xcworkspace
+!*.xcworkspace/contents.xcworkspacedata
 
 # macOS
 .DS_Store
@@ -25,6 +25,13 @@ xcuserdata/
 .build/
 Packages/
 Package.resolved
+
+# Engine binaries (download separately)
+Xiangqi/Resources/pikafish
+Xiangqi/Resources/pikafish.nnue
+
+# Claude
+.claude/
 
 # Misc
 *.swp
